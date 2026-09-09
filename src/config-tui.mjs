@@ -12,11 +12,77 @@ import { truncateText } from './text.mjs';
 
 const h = React.createElement;
 
+// Full mode's fixed chrome (outer border, header, panel borders/padding,
+// section title/description, the bordered next/launch button, footer) —
+// everything in the full-mode frame except the choice list itself.
+const FULL_CHROME_ROWS = 19;
+
+// Narrow mode's fixed chrome (header, the details panel's top border,
+// section title, the (borderless) next/launch button, footer) — everything
+// except the section menu and the choice list.
+const NARROW_BASE_CHROME_ROWS = 6;
+const NARROW_MIN_CHOICE_ROWS = 6;
+
 export function getConfigLayoutMode(width, height) {
-    if (width < 48 || height < 12) return 'too-small';
-    if (width < 72 || height < 14) return 'minimal';
+    if (width < 30) return 'too-small';
+    if (width < 72) return height < 14 ? 'too-small' : 'narrow';
+    if (height < 12) return 'too-small';
     if (width < 100 || height < 26) return 'compact';
     return 'full';
+}
+
+// Decide whether a choice list gets breathing room (a blank line between
+// items, plus room for descriptions) or renders tight (one line per item).
+// Always computed from an explicit row budget rather than letting the
+// terminal's flex layout silently shrink/round — that implicit shrinking is
+// what causes items to visually cram together at borderline sizes even
+// though the difference is only a row or two.
+export function shouldSpaceChoiceList(itemCount, availableRows) {
+    if (!itemCount) return true;
+    return itemCount * 2 - 1 <= availableRows;
+}
+
+export function getFullChoiceListBudget(terminalHeight) {
+    return Math.max(0, terminalHeight - FULL_CHROME_ROWS);
+}
+
+// Full mode's sidebar (SETUP list) stretches to match the details panel's
+// height, so its own natural content — up to two lines per section — can
+// exceed that shared height at borderline sizes. Computed the same
+// deterministic way as the choice list budget, this decides whether the
+// sidebar can afford a summary line under every section or must render
+// titles only, instead of letting the terminal's layout engine silently
+// compress (and drop lines from) the whole full-mode frame to make it fit.
+const SIDEBAR_CHROME_ROWS = 9; // outer border(2) + header(3) + middle row padding(2) + footer(2)
+const SIDEBAR_HEADER_ROWS = 2; // "SETUP" label + its spacer row
+
+export function getFullSidebarBudget(terminalHeight) {
+    return Math.max(0, terminalHeight - SIDEBAR_CHROME_ROWS);
+}
+
+export function shouldShowSectionSummaries(sectionCount, availableRows) {
+    return sectionCount * 2 + SIDEBAR_HEADER_ROWS <= availableRows;
+}
+
+// Plans the narrow (tall-but-narrow terminal) layout: whether the full
+// vertical section menu fits, and whether the active section's choice list
+// gets spacing/descriptions — all computed from an explicit row budget so
+// nothing is ever asked to render more rows than are actually available.
+export function getNarrowLayoutPlan(terminalHeight, sectionCount, choiceCount) {
+    const showSectionMenu =
+        terminalHeight >= sectionCount + NARROW_BASE_CHROME_ROWS + NARROW_MIN_CHOICE_ROWS;
+    const menuRows = showSectionMenu ? sectionCount : 1;
+    const detailRows = Math.max(0, terminalHeight - menuRows - NARROW_BASE_CHROME_ROWS);
+
+    if (shouldSpaceChoiceList(choiceCount, Math.max(0, detailRows - 1))) {
+        return { showSectionMenu, menuRows, spacious: true, showDescription: true };
+    }
+    return {
+        showSectionMenu,
+        menuRows,
+        spacious: shouldSpaceChoiceList(choiceCount, detailRows),
+        showDescription: false,
+    };
 }
 
 const ENTER_ALTERNATE_SCREEN = '\u001b[?1049h\u001b[2J\u001b[H';
@@ -262,6 +328,13 @@ function ConfigLayout({
     };
 
     if (layoutMode === 'full') {
+        const choiceBudget = getFullChoiceListBudget(terminal.height);
+        const showSummaries = shouldShowSectionSummaries(
+            sections.length,
+            getFullSidebarBudget(terminal.height),
+        );
+        // Sidebar (30) + its margin (1) + this panel's own borders/padding (~8).
+        const detailsWidth = Math.max(20, terminal.width - 39);
         return h(
             Box,
             {
@@ -279,8 +352,9 @@ function ConfigLayout({
                     sections,
                     activeIndex: sectionIndex,
                     onSelect: onSelectSection,
+                    showSummaries,
                 }),
-                h(SectionDetails, sharedDetails),
+                h(SectionDetails, { ...sharedDetails, choiceBudget, width: detailsWidth }),
             ),
             h(Footer, {
                 notice,
@@ -288,6 +362,25 @@ function ConfigLayout({
                 onCancel,
             }),
         );
+    }
+
+    if (layoutMode === 'narrow') {
+        return h(NarrowLayout, {
+            terminal,
+            draft,
+            sections,
+            sectionIndex,
+            activeSection,
+            choiceIndex,
+            notice,
+            portalChoices,
+            backendChoices,
+            onSelectSection,
+            onChoose,
+            onNext,
+            onLaunch,
+            onCancel,
+        });
     }
 
     return h(
@@ -399,6 +492,7 @@ function CompactSectionDetails({
     onLaunch,
     width,
     showDescription,
+    spacious = false,
 }) {
     return h(
         Box,
@@ -424,29 +518,35 @@ function CompactSectionDetails({
                       section,
                       activeChoiceIndex,
                       onChoose,
-                      compact: true,
+                      compact: !spacious,
+                      width: width - 4,
                   }),
         ),
         h(
             Box,
             { justifyContent: 'flex-end' },
             section.id === 'review'
-                ? h(CompactActionButton, { label: '▶ LAUNCH PORTALS', color: 'green', onPress: onLaunch })
+                ? h(CompactActionButton, { label: '▶ LAUNCH PORTALS', color: 'green', onPress: onLaunch, width })
                 : h(CompactActionButton, {
                       label: `NEXT: ${compactSectionTitle({ title: nextTitle })} →`,
                       color: 'cyan',
                       onPress: onNext,
+                      width,
                   }),
         ),
     );
 }
 
-function CompactActionButton({ label, color, onPress }) {
+function CompactActionButton({ label, color, onPress, width = Number.POSITIVE_INFINITY }) {
     const ref = useClickable(onPress);
     return h(
         Box,
         { ref },
-        h(Text, { bold: true, color: 'black', backgroundColor: color }, ` ${label} `),
+        h(
+            Text,
+            { bold: true, color: 'black', backgroundColor: color },
+            ` ${truncateText(label, Math.max(4, width - 4))} `,
+        ),
     );
 }
 
@@ -475,6 +575,108 @@ function compactSectionTitle(section) {
     return titles[section.title] ?? section.title;
 }
 
+// A dedicated stacked layout for tall-but-narrow terminals (e.g. 40x28).
+// Rather than squeezing the two-column full layout or the horizontal-tab
+// compact layout into too little width, everything is stacked full-width
+// and every line is explicitly truncated, so it never overflows no matter
+// how narrow the terminal is — and it uses the ample height to show the
+// full section menu and a spaced choice list whenever there's room.
+function NarrowLayout({
+    terminal,
+    draft,
+    sections,
+    sectionIndex,
+    activeSection,
+    choiceIndex,
+    notice,
+    portalChoices,
+    backendChoices,
+    onSelectSection,
+    onChoose,
+    onNext,
+    onLaunch,
+    onCancel,
+}) {
+    const plan = getNarrowLayoutPlan(
+        terminal.height,
+        sections.length,
+        activeSection.id === 'review' ? 0 : activeSection.choices.length,
+    );
+
+    return h(
+        Box,
+        { width: terminal.width, height: terminal.height, flexDirection: 'column' },
+        h(NarrowHeader, { draft, sectionIndex, sectionCount: sections.length, width: terminal.width }),
+        plan.showSectionMenu
+            ? h(NarrowSectionMenu, {
+                  sections,
+                  activeIndex: sectionIndex,
+                  width: terminal.width,
+                  onSelect: onSelectSection,
+              })
+            : h(CompactSectionTabs, {
+                  sections,
+                  activeIndex: sectionIndex,
+                  width: terminal.width,
+                  onSelect: onSelectSection,
+              }),
+        h(CompactSectionDetails, {
+            section: activeSection,
+            activeChoiceIndex: choiceIndex,
+            draft,
+            portalChoices,
+            backendChoices,
+            onChoose,
+            onNext,
+            nextTitle: sections[sectionIndex + 1]?.title,
+            onLaunch,
+            width: terminal.width,
+            showDescription: plan.showDescription,
+            spacious: plan.spacious,
+        }),
+        h(CompactFooter, {
+            notice,
+            reviewActive: activeSection.id === 'review',
+            width: terminal.width,
+            onCancel,
+        }),
+    );
+}
+
+function NarrowHeader({ draft, sectionIndex, sectionCount, width }) {
+    const environment = draft.stackMode === 'dev-api' ? 'DEV API' : 'LOCAL';
+    const status = `${sectionIndex + 1}/${sectionCount} · ${environment} · ${draft.portals.length} portal${draft.portals.length === 1 ? '' : 's'}`;
+
+    return h(
+        Box,
+        { flexDirection: 'column', paddingX: 1 },
+        h(Text, { bold: true, color: 'cyan' }, truncateText('CareContinuity Portals', Math.max(1, width - 2))),
+        h(Text, { color: 'gray' }, truncateText(status, Math.max(1, width - 2))),
+    );
+}
+
+function NarrowSectionMenu({ sections, activeIndex, width, onSelect }) {
+    return h(
+        Box,
+        { flexDirection: 'column', paddingX: 1 },
+        ...sections.map((section, index) =>
+            h(NarrowSectionMenuItem, {
+                key: section.id,
+                section,
+                active: index === activeIndex,
+                width,
+                onPress: () => onSelect(index),
+            }),
+        ),
+    );
+}
+
+function NarrowSectionMenuItem({ section, active, width, onPress }) {
+    const ref = useClickable(onPress);
+    const label = truncateText(`${active ? '›' : ' '} ${section.title}`, Math.max(1, width - 2));
+    return h(Box, { ref }, h(Text, { bold: active, color: active ? 'cyan' : 'white' }, label));
+}
+
 function SmallTerminalNotice({ terminal }) {
     return h(
         Box,
@@ -488,7 +690,7 @@ function SmallTerminalNotice({ terminal }) {
             borderColor: 'yellow',
         },
         h(Text, { bold: true, color: 'yellow' }, 'Terminal too small'),
-        h(Text, { color: 'gray' }, `${terminal.width}×${terminal.height} · need 48×12`),
+        h(Text, { color: 'gray' }, `${terminal.width}×${terminal.height} · need 30×14`),
     );
 }
 
@@ -497,7 +699,7 @@ function Header({ draft }) {
 
     return h(
         Box,
-        { paddingX: 2, paddingTop: 1, justifyContent: 'space-between' },
+        { paddingX: 2, paddingTop: 1, justifyContent: 'space-between', flexShrink: 0 },
         h(
             Box,
             { flexDirection: 'column' },
@@ -517,11 +719,13 @@ function Header({ draft }) {
     );
 }
 
-function SectionList({ sections, activeIndex, onSelect }) {
+const SECTION_LIST_WIDTH = 30;
+
+function SectionList({ sections, activeIndex, onSelect, showSummaries = true }) {
     return h(
         Box,
         {
-            width: 30,
+            width: SECTION_LIST_WIDTH,
             flexShrink: 0,
             flexDirection: 'column',
             borderStyle: 'single',
@@ -536,28 +740,37 @@ function SectionList({ sections, activeIndex, onSelect }) {
                 key: section.id,
                 section,
                 active: index === activeIndex,
+                showSummary: showSummaries,
                 onPress: () => onSelect(index),
             }),
         ),
     );
 }
 
-function SectionItem({ section, active, onPress }) {
+function SectionItem({ section, active, showSummary, onPress }) {
     const ref = useClickable(onPress);
+    // paddingX(2) on the outer box + the ›/space+title indent (marginLeft 3).
+    const summaryWidth = SECTION_LIST_WIDTH - 2 - 3;
 
     return h(
         Box,
-        { ref, flexDirection: 'column' },
+        { ref, flexDirection: 'column', flexShrink: 0 },
         h(
             Text,
             { bold: active, color: active ? 'cyan' : 'white' },
             `${active ? '›' : ' '} ${section.title}`,
         ),
-        h(
-            Box,
-            { marginLeft: 3 },
-            h(Text, { color: 'gray', dimColor: true }, section.summary),
-        ),
+        // The summary is truncated (never wrapped) and only shown when there's
+        // room for every section to have one — otherwise, at borderline full-mode
+        // heights, a wrapped summary could push the sidebar's total content past
+        // what the details panel next to it has room for.
+        showSummary
+            ? h(
+                  Box,
+                  { marginLeft: 3 },
+                  h(Text, { color: 'gray', dimColor: true }, truncateText(section.summary, summaryWidth)),
+              )
+            : null,
     );
 }
 
@@ -571,7 +784,11 @@ function SectionDetails({
     onNext,
     nextTitle,
     onLaunch,
+    choiceBudget = Number.POSITIVE_INFINITY,
+    width = Number.POSITIVE_INFINITY,
 }) {
+    const roomy = section.id === 'review' || shouldSpaceChoiceList(section.choices.length, choiceBudget);
+
     return h(
         Box,
         {
@@ -584,7 +801,7 @@ function SectionDetails({
         },
         h(Text, { bold: true, color: 'cyan' }, section.title),
         h(Text, { color: 'gray' }, section.description),
-        h(Box, { height: 1 }),
+        h(Box, { height: 1, flexShrink: 0 }),
         h(
             Box,
             { flexGrow: 1, flexDirection: 'column' },
@@ -594,6 +811,8 @@ function SectionDetails({
                       section,
                       activeChoiceIndex,
                       onChoose,
+                      compact: !roomy,
+                      width,
                   }),
         ),
         h(
@@ -606,7 +825,7 @@ function SectionDetails({
     );
 }
 
-function ChoiceList({ section, activeChoiceIndex, onChoose, compact = false }) {
+function ChoiceList({ section, activeChoiceIndex, onChoose, compact = false, width = Number.POSITIVE_INFINITY }) {
     return h(
         Box,
         { flexDirection: 'column' },
@@ -617,13 +836,14 @@ function ChoiceList({ section, activeChoiceIndex, onChoose, compact = false }) {
                 choice,
                 active: index === activeChoiceIndex,
                 compact,
+                width,
                 onPress: () => onChoose(index, choice),
             }),
         ),
     );
 }
 
-function ChoiceItem({ section, choice, active, compact, onPress }) {
+function ChoiceItem({ section, choice, active, compact, width, onPress }) {
     const ref = useClickable(onPress);
     const marker = section.kind === 'multi'
         ? choice.selected
@@ -650,7 +870,11 @@ function ChoiceItem({ section, choice, active, compact, onPress }) {
             ),
         ),
         choice.description && !compact
-            ? h(Text, { color: 'gray', dimColor: true }, `      ${choice.description}`)
+            ? h(
+                  Text,
+                  { color: 'gray', dimColor: true },
+                  `      ${truncateText(choice.description, Math.max(10, width - 6))}`,
+              )
             : null,
     );
 }
@@ -685,7 +909,7 @@ function NextButton({ nextTitle, onPress }) {
     const ref = useClickable(onPress);
     return h(
         Box,
-        { ref, borderStyle: 'round', borderColor: 'cyan', paddingX: 2 },
+        { ref, borderStyle: 'round', borderColor: 'cyan', paddingX: 2, flexShrink: 0 },
         h(Text, { bold: true, color: 'cyan' }, `NEXT: ${nextTitle} →`),
     );
 }
@@ -694,7 +918,7 @@ function LaunchButton({ onPress }) {
     const ref = useClickable(onPress);
     return h(
         Box,
-        { ref, borderStyle: 'double', borderColor: 'green', paddingX: 4, paddingY: 1 },
+        { ref, borderStyle: 'double', borderColor: 'green', paddingX: 4, paddingY: 1, flexShrink: 0 },
         h(Text, { bold: true, color: 'green' }, '▶  LAUNCH PORTALS'),
     );
 }
@@ -702,7 +926,7 @@ function LaunchButton({ onPress }) {
 function Footer({ notice, reviewActive, onCancel }) {
     return h(
         Box,
-        { paddingX: 2, paddingBottom: 1, justifyContent: 'space-between' },
+        { paddingX: 2, paddingBottom: 1, justifyContent: 'space-between', flexShrink: 0 },
         h(
             Text,
             { color: notice ? 'yellow' : 'gray' },

@@ -11,7 +11,7 @@ import {
     createDashboardLauncherAdapter,
 } from './protocol-client.mjs';
 
-const PACKAGE_VERSION = '0.1.4';
+const PACKAGE_VERSION = '0.1.5';
 
 export function parseCliArgs(args) {
     const hostIndex = args.indexOf('--host');
