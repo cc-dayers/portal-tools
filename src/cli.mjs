@@ -10,8 +10,9 @@ import {
     connectToLauncherHost,
     createDashboardLauncherAdapter,
 } from './protocol-client.mjs';
+import { runSelfUpdate } from './self-update.mjs';
 
-const PACKAGE_VERSION = '0.1.5';
+const PACKAGE_VERSION = '0.1.6';
 
 export function parseCliArgs(args) {
     const hostIndex = args.indexOf('--host');
@@ -19,6 +20,7 @@ export function parseCliArgs(args) {
     return {
         protocolInfo: args.includes('--protocol-info'),
         help: args.includes('--help') || args.includes('-h'),
+        update: args.includes('--update'),
         hostPath: hostIndex >= 0 ? args[hostIndex + 1] ?? '' : '',
         hostArgs: separatorIndex >= 0 ? args.slice(separatorIndex + 1) : [],
     };
@@ -46,8 +48,20 @@ export async function run(args = process.argv.slice(2)) {
     const parsed = parseCliArgs(args);
     if (parsed.help) {
         process.stdout.write(
-            'Usage: cc-portals-tui --host <portal-launcher-host.mjs> -- [launcher flags]\n',
+            'Usage: cc-portals-tui --host <portal-launcher-host.mjs> -- [launcher flags]\n' +
+                '       cc-portals-tui --update\n',
         );
+        return 0;
+    }
+    if (parsed.update) {
+        const result = await runSelfUpdate({
+            currentVersion: PACKAGE_VERSION,
+            log: (message) => process.stdout.write(`[cc-portals-tui] ${message}\n`),
+        });
+        if (!result.success) {
+            process.stderr.write(`[cc-portals-tui] Update failed: ${result.message}\n`);
+            return 1;
+        }
         return 0;
     }
     if (parsed.protocolInfo) {

@@ -14,14 +14,16 @@ test('parseCliArgs separates the host script from forwarded launcher flags', () 
     ).toEqual({
         protocolInfo: false,
         help: false,
+        update: false,
         hostPath: 'C:/repo/Portals/scripts/portal-launcher-host.mjs',
         hostArgs: ['--config', '--verbose'],
     });
 });
 
-test('parseCliArgs recognizes help and protocol preflight modes', () => {
+test('parseCliArgs recognizes help, protocol preflight, and update modes', () => {
     expect(parseCliArgs(['--help'])).toMatchObject({ help: true });
     expect(parseCliArgs(['--protocol-info'])).toMatchObject({ protocolInfo: true });
+    expect(parseCliArgs(['--update'])).toMatchObject({ update: true });
 });
 
 test('toLauncherSelection restores the wizard stack mode', () => {
