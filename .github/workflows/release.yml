@@ -23,6 +23,7 @@ jobs:
       - run: yarn test
       - run: yarn npm audit --all --recursive --severity moderate
       - run: mkdir -p dist && npm pack --pack-destination dist
-      - run: gh release create "$GITHUB_REF_NAME" dist/*.tgz --verify-tag --generate-notes
+      - run: cp dist/cc-dayers-portal-tools-*.tgz dist/cc-dayers-portal-tools.tgz
+      - run: gh release create "$GITHUB_REF_NAME" dist/cc-dayers-portal-tools.tgz --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

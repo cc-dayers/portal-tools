@@ -202,7 +202,7 @@ export function createProtocolClient({ input, output, errorInput, onClose = () =
             }
             await send('client.hello', {
                 selectedVersion: PROTOCOL_VERSION,
-                client: { name: 'cc-portals-tui', version: '0.1.3' },
+                client: { name: 'cc-portals-tui', version: '0.1.4' },
             });
             return withTimeout(sessionPromise, REQUEST_TIMEOUT_MS, 'launcher session');
         },
