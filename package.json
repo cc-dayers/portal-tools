@@ -1,6 +1,6 @@
 {
     "name": "@cc-dayers/portal-tools",
-    "version": "0.1.7",
+    "version": "0.1.8",
     "description": "Developer tooling for CareContinuity portal applications",
     "type": "module",
     "repository": {

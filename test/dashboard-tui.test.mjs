@@ -3,6 +3,8 @@ import { expect, test, vi } from 'vitest';
 
 import {
     getDashboardLayoutMode,
+    getDashboardRowBudget,
+    getVisibleLogRows,
     getVisibleTargetWindow,
     runPortalDashboard,
 } from '../src/dashboard-tui.mjs';
@@ -18,6 +20,21 @@ test('dashboard layout degrades to status-only before showing the size fallback'
     expect(getDashboardLayoutMode(60, 12)).toBe('minimal');
     expect(getDashboardLayoutMode(39, 20)).toBe('too-small');
     expect(getDashboardLayoutMode(80, 7)).toBe('too-small');
+});
+
+test('minimal tier gets a real scrolling log budget, not a fixed single line', () => {
+    // This is the bug: the old getVisibleLogRows returned a hardcoded 1 for
+    // anything narrower than 72 columns, so a tall-but-narrow terminal could
+    // never show more than a placeholder no matter how much vertical room
+    // it had.
+    expect(getVisibleLogRows(13, 'minimal')).toBeGreaterThan(1);
+    expect(getVisibleLogRows(28, 'minimal')).toBeGreaterThan(getVisibleLogRows(13, 'minimal'));
+    expect(getVisibleLogRows(20, 'compact')).toBe(getVisibleLogRows(20, 'minimal'));
+});
+
+test('minimal tier leaves room for the stacked action rows below the target list', () => {
+    expect(getDashboardRowBudget(13, 'minimal')).toBeGreaterThan(0);
+    expect(getDashboardRowBudget(28, 'minimal')).toBeGreaterThan(getDashboardRowBudget(13, 'minimal'));
 });
 
 test('target window keeps the selected target visible', () => {
@@ -103,6 +120,59 @@ test('dashboard owns launcher output and coordinates shutdown through the contro
     expect(stopAll).toHaveBeenCalledWith('q');
 });
 
+
+test('logs tab renders real log lines on a narrow terminal instead of a static placeholder', async () => {
+    const stdin = createInput();
+    const stdout = createOutput();
+    stdout.columns = 40;
+    stdout.rows = 21; // -1 adjustment inside useTerminalSize makes this height 20 (minimal tier)
+    let renderedOutput = '';
+    stdout.on('data', (chunk) => {
+        renderedOutput += chunk.toString();
+    });
+
+    const launchPortals = vi.fn(
+        (options) =>
+            new Promise((resolve) => {
+                options.onControllerReady({
+                    getSnapshot: () => createSnapshot(),
+                    restart: vi.fn(),
+                    stop: vi.fn(),
+                    start: vi.fn(),
+                    open: vi.fn(),
+                    restartAll: vi.fn(),
+                    stopAll: vi.fn(() => resolve(0)),
+                });
+                options.onStateChange(createSnapshot());
+                options.onLog({
+                    targetId: 'sso-local',
+                    targetLabel: 'SSO',
+                    source: 'stdout',
+                    line: 'listening on http://localhost:3000',
+                    timestamp: 1,
+                });
+            }),
+    );
+
+    const dashboardPromise = runPortalDashboard({
+        launchOptions: { targets: createSnapshot().targets, logPath: 'scripts/logs/portals.log' },
+        launchPortals,
+        stdin,
+        stdout,
+        stderr: stdout,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    stdin.write('2'); // switch to the Logs tab
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    stdin.write('q');
+    await dashboardPromise;
+
+    expect(renderedOutput).toContain('SSO');
+    expect(renderedOutput).toContain('listening on http');
+    expect(renderedOutput).not.toContain('Logs continue in the background');
+    expect(renderedOutput).not.toContain('resize for the live viewer');
+});
 
 function createInput() {
     const stream = new PassThrough();

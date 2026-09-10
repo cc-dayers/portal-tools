@@ -38,16 +38,20 @@ export function getVisibleTargetWindow(targets, selectedIndex, maximumRows) {
     return { items: items.slice(start, start + rowCount), start };
 }
 
-function getDashboardRowBudget(height, layoutMode) {
+export function getDashboardRowBudget(height, layoutMode) {
     if (layoutMode === 'full') return Math.max(1, height - 15);
     if (layoutMode === 'compact') return Math.max(1, height - 6);
-    return Math.max(1, height - 5);
+    // minimal: reserve one extra line for the selected target's inline
+    // action row, plus the stacked all-targets menu below the list.
+    return Math.max(1, height - 8);
 }
 
-function getVisibleLogRows(height, layoutMode) {
+export function getVisibleLogRows(height, layoutMode) {
     if (layoutMode === 'full') return Math.max(1, height - 10);
-    if (layoutMode === 'compact') return Math.max(1, height - 6);
-    return 1;
+    // compact and minimal share the same log-view chrome, so both get a
+    // real scrolling log viewer sized from the actual terminal height
+    // instead of the old hardcoded single-line placeholder.
+    return Math.max(1, height - 6);
 }
 
 export async function runPortalDashboard({
@@ -649,18 +653,32 @@ function DashboardView({
                       onPress: onStopAll,
                   }),
               )
-            : h(CompactDashboardActions, {
-                  target: selectedTarget,
-                  disabled: disabled || !controllerReady,
-                  actionBusy,
-                  width,
-                  onStart,
-                  onStop,
-                  onRestart,
-                  onOpen,
-                  onRestartAll,
-                  onStopAll,
-              }),
+            : minimal
+              ? h(MinimalDashboardActions, {
+                    target: selectedTarget,
+                    disabled: disabled || !controllerReady,
+                    totalTargets,
+                    actionBusy,
+                    width,
+                    onStart,
+                    onStop,
+                    onRestart,
+                    onOpen,
+                    onRestartAll,
+                    onStopAll,
+                })
+              : h(CompactDashboardActions, {
+                    target: selectedTarget,
+                    disabled: disabled || !controllerReady,
+                    actionBusy,
+                    width,
+                    onStart,
+                    onStop,
+                    onRestart,
+                    onOpen,
+                    onRestartAll,
+                    onStopAll,
+                }),
     );
 }
 
@@ -765,6 +783,73 @@ function CompactDashboardActions({
     );
 }
 
+function MinimalDashboardActions({
+    target,
+    disabled,
+    totalTargets,
+    actionBusy,
+    width,
+    onStart,
+    onStop,
+    onRestart,
+    onOpen,
+    onRestartAll,
+    onStopAll,
+}) {
+    const stopped = target ? isStoppedStatus(target.status) : false;
+    const canOpen = Boolean(target) && target.openable !== false && Boolean(target.url) && target.status === 'ready';
+
+    return h(
+        Box,
+        { flexDirection: 'column', borderTop: true, borderStyle: 'single', borderColor: 'gray' },
+        // Row 1: actions on the currently-selected target, right by the row
+        // it affects rather than sharing a line with the all-targets menu.
+        target
+            ? h(
+                  Box,
+                  { paddingX: 1, gap: 1 },
+                  h(Text, { color: 'gray' }, truncateText(target.label, Math.max(6, width - 30))),
+                  h(CompactDashboardButton, {
+                      label: stopped ? 'Start' : 'Stop',
+                      color: stopped ? 'green' : 'yellow',
+                      disabled,
+                      onPress: () => (stopped ? onStart(target) : onStop(target)),
+                  }),
+                  h(CompactDashboardButton, {
+                      label: 'Restart',
+                      color: 'cyan',
+                      disabled: disabled || stopped,
+                      onPress: () => onRestart(target),
+                  }),
+                  h(CompactDashboardButton, {
+                      label: 'Open',
+                      color: 'blueBright',
+                      disabled: disabled || !canOpen,
+                      onPress: () => onOpen(target),
+                  }),
+              )
+            : null,
+        // Row 2: actions on every target at once.
+        h(
+            Box,
+            { paddingX: 1, gap: 1 },
+            actionBusy ? h(Text, { color: 'yellow' }, truncateText(`${actionBusy}…`, Math.max(6, width - 24))) : null,
+            h(CompactDashboardButton, {
+                label: 'Restart All',
+                color: 'cyan',
+                disabled: disabled || totalTargets === 0,
+                onPress: onRestartAll,
+            }),
+            h(CompactDashboardButton, {
+                label: 'Stop All',
+                color: 'yellow',
+                disabled,
+                onPress: onStopAll,
+            }),
+        ),
+    );
+}
+
 function CompactDashboardButton({ label, color, disabled, onPress }) {
     const ref = useClickable(() => {
         if (!disabled) onPress();
@@ -851,28 +936,11 @@ function LogsView({
     onClear,
 }) {
     const position = total === 0 ? 'empty' : `${top + 1}-${Math.min(total, top + visibleRows)} of ${total}`;
-
-    if (layoutMode === 'minimal') {
-        return h(
-            Box,
-            {
-                flexGrow: 1,
-                flexDirection: 'column',
-                borderTop: true,
-                borderBottom: false,
-                borderLeft: false,
-                borderRight: false,
-                borderStyle: 'single',
-                borderColor: 'gray',
-                paddingX: 1,
-            },
-            h(Text, { bold: true, color: 'cyan' }, 'Logs continue in the background'),
-            h(Text, { color: 'blueBright' }, truncateText(logPath || 'scripts/logs/portals.log', width - 4)),
-            h(Text, { color: 'gray' }, `${total} buffered entries · resize for the live viewer`),
-        );
-    }
-
+    const minimal = layoutMode === 'minimal';
     const full = layoutMode === 'full';
+
+    // Every tier gets a real, scrolling log viewer — a narrow terminal just
+    // uses a tighter header (no legend row) and a narrower per-line format.
     return h(
         Box,
         {
@@ -885,22 +953,46 @@ function LogsView({
             borderBottom: full,
             borderTop: true,
         },
-        h(
-            Box,
-            { paddingX: 1, justifyContent: 'space-between' },
-            h(Text, { bold: true, color: 'gray' }, 'TIME      TARGET         SOURCE   MESSAGE'),
-            h(
-                Box,
-                { gap: 1 },
-                h(Text, { color: follow ? 'green' : 'yellow' }, `${follow ? 'FOLLOW' : 'PAUSED'} · ${position}`),
-                h(InlineButton, {
-                    label: follow ? 'Pause' : 'Follow',
-                    color: follow ? 'yellow' : 'green',
-                    onPress: onToggleFollow,
-                }),
-                h(InlineButton, { label: 'Clear', color: 'gray', onPress: onClear }),
-            ),
-        ),
+        minimal
+            ? h(
+                  Box,
+                  { paddingX: 1, justifyContent: 'space-between' },
+                  h(
+                      Text,
+                      { color: follow ? 'green' : 'yellow' },
+                      truncateText(`${follow ? 'FOLLOW' : 'PAUSED'} ${position}`, Math.max(6, width - 20)),
+                  ),
+                  h(
+                      Box,
+                      { gap: 1 },
+                      h(InlineButton, {
+                          label: follow ? 'Pause' : 'Follow',
+                          color: follow ? 'yellow' : 'green',
+                          onPress: onToggleFollow,
+                      }),
+                      h(InlineButton, { label: 'Clear', color: 'gray', onPress: onClear }),
+                  ),
+              )
+            : h(
+                  Box,
+                  { paddingX: 1, justifyContent: 'space-between' },
+                  h(Text, { bold: true, color: 'gray' }, 'TIME      TARGET         SOURCE   MESSAGE'),
+                  h(
+                      Box,
+                      { gap: 1 },
+                      h(
+                          Text,
+                          { color: follow ? 'green' : 'yellow' },
+                          `${follow ? 'FOLLOW' : 'PAUSED'} · ${position}`,
+                      ),
+                      h(InlineButton, {
+                          label: follow ? 'Pause' : 'Follow',
+                          color: follow ? 'yellow' : 'green',
+                          onPress: onToggleFollow,
+                      }),
+                      h(InlineButton, { label: 'Clear', color: 'gray', onPress: onClear }),
+                  ),
+              ),
         logs.length === 0
             ? h(Box, { paddingX: 1 }, h(Text, { color: 'gray' }, 'No log entries to display.'))
             : logs.map((entry) => h(LogRow, { key: entry.id, entry, width })),
@@ -913,12 +1005,30 @@ function InlineButton({ label, color, onPress }) {
 }
 
 function LogRow({ entry, width }) {
+    const isError = entry.source.toLowerCase() === 'stderr' || ERROR_PATTERN.test(entry.line);
+
+    // Below ~60 columns the full TIME/TARGET/SOURCE prefix (36 chars) leaves
+    // almost nothing for the message itself, so drop straight to a compact
+    // "target: message" line instead of truncating the message to a few
+    // characters.
+    if (width < 60) {
+        const target = truncateText(entry.targetLabel || entry.targetId || 'launcher', 10);
+        const prefixWidth = target.length + 3;
+        const message = truncateText(entry.line, Math.max(6, width - prefixWidth - 2));
+        return h(
+            Box,
+            { paddingX: 1 },
+            h(Text, { color: entry.targetColor || 'cyan' }, target),
+            h(Text, { color: isError ? 'red' : 'gray' }, ': '),
+            h(Text, { color: isError ? 'red' : 'white' }, message),
+        );
+    }
+
     const timestamp = formatTimestamp(entry.timestamp).padEnd(9);
     const target = truncateText(entry.targetLabel || entry.targetId || 'launcher', 14).padEnd(14);
     const source = truncateText(entry.source || 'stdout', 8).padEnd(8);
     const prefixWidth = timestamp.length + target.length + source.length + 5;
     const message = truncateText(entry.line, Math.max(10, width - prefixWidth));
-    const isError = entry.source.toLowerCase() === 'stderr' || ERROR_PATTERN.test(entry.line);
 
     return h(
         Box,
