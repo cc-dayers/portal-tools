@@ -12,7 +12,7 @@ import {
 } from './protocol-client.mjs';
 import { runSelfUpdate } from './self-update.mjs';
 
-const PACKAGE_VERSION = '0.1.8';
+const PACKAGE_VERSION = '0.1.9';
 
 export function parseCliArgs(args) {
     const hostIndex = args.indexOf('--host');

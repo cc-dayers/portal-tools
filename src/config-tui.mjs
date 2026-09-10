@@ -133,14 +133,17 @@ export async function runPortalConfigTui({
     portalChoices,
     backendChoices,
     existingServerChoices,
+    stdin = process.stdin,
+    stdout = process.stdout,
+    stderr = process.stderr,
 }) {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    if (!stdin.isTTY || !stdout.isTTY) {
         throw new Error('The --tui option requires an interactive terminal.');
     }
 
     let result = null;
-    const throttledOutput = createThrottledOutput(process.stdout);
-    process.stdout.write(`${ENTER_ALTERNATE_SCREEN}${ENABLE_MOUSE_REPORTING}`);
+    const throttledOutput = createThrottledOutput(stdout);
+    stdout.write(`${ENTER_ALTERNATE_SCREEN}${ENABLE_MOUSE_REPORTING}`);
 
     try {
         const instance = render(
@@ -156,9 +159,9 @@ export async function runPortalConfigTui({
             {
                 exitOnCtrlC: false,
                 patchConsole: false,
-                stdin: process.stdin,
+                stdin,
                 stdout: throttledOutput.stdout,
-                stderr: process.stderr,
+                stderr,
             },
         );
 
@@ -166,8 +169,8 @@ export async function runPortalConfigTui({
         return result;
     } finally {
         throttledOutput.dispose();
-        process.stdout.write(DISABLE_MOUSE_REPORTING);
-        process.stdout.write(EXIT_ALTERNATE_SCREEN);
+        stdout.write(DISABLE_MOUSE_REPORTING);
+        stdout.write(EXIT_ALTERNATE_SCREEN);
     }
 }
 

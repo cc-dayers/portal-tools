@@ -1,0 +1,335 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`config wizard at 30x15 renders as expected 1`] = `
+" CareContinuity Portals
+ 1/7 · DEV API · 2 portals
+        Portals        Env →
+──────────────────────────────
+ Portals
+ › [●] SSO
+   [●] Provider
+   [ ] Coordinator
+   [ ] Admin
+   [ ] Reports
+   [ ] Patient
+
+                 NEXT: Env →
+ ↑/↓ choose · Sp…    q cancel
+"
+`;
+
+exports[`config wizard at 33x29 renders as expected 1`] = `
+" CareContinuity Portals
+ 1/7 · DEV API · 2 portals
+ › Portals
+   Environment
+   Build mode
+   Existing servers
+   Output
+   Browser
+   Review + launch
+─────────────────────────────────
+ Portals
+ Choose one or more React app…
+ › [●] SSO
+
+   [●] Provider
+
+   [ ] Coordinator
+
+   [ ] Admin
+
+   [ ] Reports
+
+   [ ] Patient
+
+
+
+                    NEXT: Env →
+ ↑/↓ choose · Space…    q cancel
+"
+`;
+
+exports[`config wizard at 46x22 renders as expected 1`] = `
+" CareContinuity Portals
+ 1/7 · DEV API · 2 portals
+ › Portals
+   Environment
+   Build mode
+   Existing servers
+   Output
+   Browser
+   Review + launch
+──────────────────────────────────────────────
+ Portals
+ › [●] SSO
+   [●] Provider
+   [ ] Coordinator
+   [ ] Admin
+   [ ] Reports
+   [ ] Patient
+
+
+                                 NEXT: Env →
+ ↑/↓ choose · Space select · Ent…    q cancel
+"
+`;
+
+exports[`config wizard at 100x27 renders as expected 1`] = `
+"╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                  │
+│  CareContinuity Portal Launcher                                            DEV API   2 PORTALS   │
+│  Configure the frontend development workspace                                                    │
+│                                                                                                  │
+│ ┌────────────────────────────┐ ┌───────────────────────────────────────────────────────────────┐ │
+│ │ › Portals                  │ │                                                               │ │
+│ │    2 selected              │ │  Portals                                                      │ │
+│ │   Environment              │ │  Choose one or more React applications to start.              │ │
+│ │    Dev API                 │ │                                                               │ │
+│ │   Build mode               │ │  › [●] SSO                                                    │ │
+│ │    Dev Server              │ │    [●] Provider                                               │ │
+│ │   Existing servers         │ │    [ ] Coordinator                                            │ │
+│ │    Auto kill and restart   │ │    [ ] Admin                                                  │ │
+│ │    on…                     │ │    [ ] Reports                                                │ │
+│ │   Output                   │ │    [ ] Patient                                                │ │
+│ │    Quiet                   │ │                                                               │ │
+│ │   Browser                  │ │                                    ╭───────────────────────╮  │ │
+│ │    Open when ready         │ │                                    │  NEXT: Environment →  │  │ │
+│ │   Review + launch          │ │                                    ╰───────────────────────╯  │ │
+│ │    Ready                   │ │                                                               │ │
+│ └────────────────────────────┘ └───────────────────────────────────────────────────────────────┘ │
+│                                                                                                  │
+│  Click an option · ↑/↓ choose · Space select · ←/→ section                   Esc/q/click cancel  │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+"
+`;
+
+exports[`dashboard at 30x9 renders as expected 1`] = `
+" CareContinui…   0/6 ready ·…
+  1 Dashboard   2 Logs
+──────────────────────────────
+ › SSO         starting
+──────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Star…   ↑/↓ select · s stop…
+ CareContinui…   6/6 ready ·…
+  1 Dashboard   2 Logs
+──────────────────────────────
+ › SSO         ready
+──────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Port…   ↑/↓ select · s stop…
+ CareContinui…       STOPPING
+  1 Dashboard   2 Logs
+──────────────────────────────
+ › SSO         ready
+──────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Stop…   ↑/↓ select · s stop…
+"
+`;
+
+exports[`dashboard at 30x15 renders as expected 1`] = `
+" CareContinui…   0/6 ready ·…
+  1 Dashboard   2 Logs
+──────────────────────────────
+ › SSO         starting
+   Provider    starting
+   Coordinator starting
+   Admin       starting
+   Reports     starting
+   Patient     starting
+
+──────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Star…   ↑/↓ select · s stop…
+ CareContinui…   6/6 ready ·…
+  1 Dashboard   2 Logs
+──────────────────────────────
+ › SSO         ready
+   Provider    ready
+   Coordinator ready
+   Admin       ready
+   Reports     ready
+   Patient     ready
+
+──────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Port…   ↑/↓ select · s stop…
+ CareContinui…       STOPPING
+  1 Dashboard   2 Logs
+──────────────────────────────
+ › SSO         ready
+   Provider    ready
+   Coordinator ready
+   Admin       ready
+   Reports     ready
+   Patient     ready
+
+──────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Stop…   ↑/↓ select · s stop…
+"
+`;
+
+exports[`dashboard at 33x29 renders as expected 1`] = `
+" CareContinuit…   0/6 ready · 0…
+  1 Dashboard   2 Logs
+─────────────────────────────────
+ › SSO            starting
+   Provider       starting
+   Coordinator    starting
+   Admin          starting
+   Reports        starting
+   Patient        starting
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─────────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Start…    ↑/↓ select · s stop/…
+ CareContinuit…   6/6 ready · 0…
+  1 Dashboard   2 Logs
+─────────────────────────────────
+ › SSO            ready
+   Provider       ready
+   Coordinator    ready
+   Admin          ready
+   Reports        ready
+   Patient        ready
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─────────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Porta…    ↑/↓ select · s stop/…
+ CareContinuit…         STOPPING
+  1 Dashboard   2 Logs
+─────────────────────────────────
+ › SSO            ready
+   Provider       ready
+   Coordinator    ready
+   Admin          ready
+   Reports        ready
+   Patient        ready
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─────────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Stopp…    ↑/↓ select · s stop/…
+"
+`;
+
+exports[`dashboard at 46x22 renders as expected 1`] = `
+" CareContinuity Port…    0/6 ready · 0 failed
+  1 Dashboard   2 Logs
+──────────────────────────────────────────────
+ › SSO                         starting
+   Provider                    starting
+   Coordinator                 starting
+   Admin                       starting
+   Reports                     starting
+   Patient                     starting
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Starting p…     ↑/↓ select · s stop/start ·…
+ CareContinuity Port…    6/6 ready · 0 failed
+  1 Dashboard   2 Logs
+──────────────────────────────────────────────
+ › SSO                         ready
+   Provider                    ready
+   Coordinator                 ready
+   Admin                       ready
+   Reports                     ready
+   Patient                     ready
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Portal lau…     ↑/↓ select · s stop/start ·…
+ CareContinuity Port…                STOPPING
+  1 Dashboard   2 Logs
+──────────────────────────────────────────────
+ › SSO                         ready
+   Provider                    ready
+   Coordinator                 ready
+   Admin                       ready
+   Reports                     ready
+   Patient                     ready
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Stopping p…     ↑/↓ select · s stop/start ·…
+"
+`;

@@ -18,7 +18,11 @@ const LOG_FLUSH_INTERVAL_MS = 100;
 const ERROR_PATTERN = /\b(?:error|failed|failure|fatal|exception)\b/i;
 
 export function getDashboardLayoutMode(width, height) {
-    if (width < 40 || height < 8) return 'too-small';
+    // Keep this in sync with getConfigLayoutMode in config-tui.mjs: the
+    // wizard hands off directly into this dashboard, so a terminal size
+    // that is usable for the wizard must also be usable here, or the user
+    // hits "too small" the instant their portals launch.
+    if (width < 30 || height < 8) return 'too-small';
     if (width < 72 || height < 13) return 'minimal';
     if (width < 110 || height < 22) return 'compact';
     return 'full';
@@ -503,7 +507,7 @@ function SmallTerminalNotice({ terminal }) {
             borderColor: 'yellow',
         },
         h(Text, { bold: true, color: 'yellow' }, 'Terminal too small'),
-        h(Text, { color: 'gray' }, `${terminal.width}×${terminal.height} · resize to at least 40×8`),
+        h(Text, { color: 'gray' }, `${terminal.width}×${terminal.height} · resize to at least 30×8`),
     );
 }
 
@@ -801,7 +805,15 @@ function MinimalDashboardActions({
 
     return h(
         Box,
-        { flexDirection: 'column', borderTop: true, borderStyle: 'single', borderColor: 'gray' },
+        {
+            flexDirection: 'column',
+            borderStyle: 'single',
+            borderColor: 'gray',
+            borderTop: true,
+            borderBottom: false,
+            borderLeft: false,
+            borderRight: false,
+        },
         // Row 1: actions on the currently-selected target, right by the row
         // it affects rather than sharing a line with the all-targets menu.
         target

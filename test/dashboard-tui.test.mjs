@@ -18,8 +18,16 @@ test('dashboard layout keeps a short standard-width terminal usable', () => {
 
 test('dashboard layout degrades to status-only before showing the size fallback', () => {
     expect(getDashboardLayoutMode(60, 12)).toBe('minimal');
-    expect(getDashboardLayoutMode(39, 20)).toBe('too-small');
+    expect(getDashboardLayoutMode(29, 20)).toBe('too-small');
     expect(getDashboardLayoutMode(80, 7)).toBe('too-small');
+});
+
+test('dashboard width floor matches the config wizard so handoff never hits too-small', () => {
+    // getConfigLayoutMode (config-tui.mjs) supports width>=30 with height>=14.
+    // The wizard hands off straight into this dashboard, so a terminal that
+    // was fine for the wizard must not become "too small" here.
+    expect(getDashboardLayoutMode(30, 14)).not.toBe('too-small');
+    expect(getDashboardLayoutMode(33, 27)).not.toBe('too-small');
 });
 
 test('minimal tier gets a real scrolling log budget, not a fixed single line', () => {
@@ -172,6 +180,69 @@ test('logs tab renders real log lines on a narrow terminal instead of a static p
     expect(renderedOutput).toContain('listening on http');
     expect(renderedOutput).not.toContain('Logs continue in the background');
     expect(renderedOutput).not.toContain('resize for the live viewer');
+});
+
+test('minimal-tier action rows use a plain divider, not a boxed panel', async () => {
+    // Regression test: MinimalDashboardActions's outer Box set borderTop:
+    // true and borderStyle: 'single' without disabling the other three
+    // sides, so Ink drew a full box around the actions instead of a plain
+    // top divider — this is what made the action area look cramped and
+    // out of place at narrow widths.
+    const stdin = createInput();
+    const stdout = createOutput();
+    stdout.columns = 46;
+    stdout.rows = 22;
+    let renderedOutput = '';
+    stdout.on('data', (chunk) => {
+        renderedOutput += chunk.toString();
+    });
+
+    let resolveLauncher;
+    const launchPortals = vi.fn(
+        (options) =>
+            new Promise((resolve) => {
+                resolveLauncher = resolve;
+                options.onControllerReady({
+                    getSnapshot: () => createSnapshot(),
+                    restart: vi.fn(),
+                    stop: vi.fn(),
+                    start: vi.fn(),
+                    open: vi.fn(),
+                    restartAll: vi.fn(),
+                    stopAll: vi.fn(() => resolveLauncher(0)),
+                });
+                options.onStateChange(createSnapshot());
+            }),
+    );
+
+    const dashboardPromise = runPortalDashboard({
+        launchOptions: { targets: createSnapshot().targets, logPath: 'scripts/logs/portals.log' },
+        launchPortals,
+        stdin,
+        stdout,
+        stderr: stdout,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    stdin.write('q');
+    await dashboardPromise;
+
+    const clean = renderedOutput.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '');
+    const frame = clean.split('\u001b[?1049l')[0] || clean;
+    const lines = frame.split('\n');
+
+    // No line should overflow the terminal width.
+    lines.forEach((line) => {
+        expect(line.length).toBeLessThanOrEqual(46);
+    });
+
+    // The action area should render as a plain divider (no box-drawing
+    // corner/side characters around the Stop/Restart/Open row).
+    const actionLines = lines.filter((line) => line.includes('Restart All'));
+    expect(actionLines.length).toBeGreaterThan(0);
+    actionLines.forEach((line) => {
+        expect(line).not.toMatch(/[┌┐└┘│]/);
+    });
 });
 
 function createInput() {
