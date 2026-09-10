@@ -1,6 +1,6 @@
 {
     "name": "@cc-dayers/portal-tools",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "description": "Developer tooling for CareContinuity portal applications",
     "type": "module",
     "repository": {
@@ -15,7 +15,9 @@
     ],
     "scripts": {
         "start": "node src/bin.mjs",
-        "check": "node --check src/bin.mjs && node --check src/cli.mjs && node --check src/protocol-client.mjs && node --check src/config-tui.mjs && node --check src/dashboard-tui.mjs && node --check src/self-update.mjs",
+        "dev": "node src/bin.mjs --host dev/mock-launcher-host.mjs -- --config",
+        "dev:quick": "node src/bin.mjs --host dev/mock-launcher-host.mjs",
+        "check": "node --check src/bin.mjs && node --check src/cli.mjs && node --check src/protocol-client.mjs && node --check src/config-tui.mjs && node --check src/dashboard-tui.mjs && node --check src/self-update.mjs && node --check dev/mock-launcher-host.mjs",
         "test": "vitest run"
     },
     "engines": {
