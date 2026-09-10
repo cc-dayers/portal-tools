@@ -22,7 +22,7 @@ import { expect, test } from 'vitest';
 
 import { runPortalConfigTui } from '../src/config-tui.mjs';
 import { runPortalDashboard } from '../src/dashboard-tui.mjs';
-import { cleanFrames, findOverflowingLines, makeFakeStdin, makeFakeStdout } from '../dev/render-frame.mjs';
+import { cleanFrames, findOverflowingLines, lastFrame, makeFakeStdin, makeFakeStdout } from '../dev/render-frame.mjs';
 
 const PORTAL_CHOICES = ['SSO', 'Provider', 'Coordinator', 'Admin', 'Reports', 'Patient'].map((name) => ({
     label: name,
@@ -54,7 +54,7 @@ function createSnapshot() {
 
 async function renderConfig(columns, rows) {
     const stdin = makeFakeStdin();
-    const { stream: stdout, getBuffer } = makeFakeStdout(columns, rows);
+    const { stream: stdout, getBuffer, getChunks } = makeFakeStdout(columns, rows);
 
     const configPromise = runPortalConfigTui({
         config: { portals: ['sso', 'provider'], environment: 'dev-api', buildMode: 'dev', existingServerMode: 'auto-restart' },
@@ -71,12 +71,12 @@ async function renderConfig(columns, rows) {
     stdin.write('q');
     await configPromise;
 
-    return cleanFrames(getBuffer());
+    return { allFrames: cleanFrames(getBuffer()), settled: lastFrame(getChunks()) };
 }
 
 async function renderDashboard(columns, rows) {
     const stdin = makeFakeStdin();
-    const { stream: stdout, getBuffer } = makeFakeStdout(columns, rows);
+    const { stream: stdout, getBuffer, getChunks } = makeFakeStdout(columns, rows);
 
     const launchPortals = (options) =>
         new Promise((resolve) => {
@@ -89,6 +89,10 @@ async function renderDashboard(columns, rows) {
                 restartAll: () => true,
                 stopAll: () => resolve(0),
             });
+            // Only ONE state change here — keeping this render deterministic
+            // (a single settle point before we read the frame) is what makes
+            // lastFrame() safe to snapshot. Do not add more onStateChange /
+            // onLog calls without also re-checking this assumption.
             options.onStateChange(createSnapshot());
         });
 
@@ -104,7 +108,7 @@ async function renderDashboard(columns, rows) {
     stdin.write('q');
     await dashboardPromise;
 
-    return cleanFrames(getBuffer());
+    return { allFrames: cleanFrames(getBuffer()), settled: lastFrame(getChunks()) };
 }
 
 // Sizes here are stdout.rows/columns as a real terminal reports them.
@@ -128,27 +132,27 @@ const DASHBOARD_SIZES = [
 
 for (const [columns, rows] of CONFIG_SIZES) {
     test(`config wizard at ${columns}x${rows}: no line overflows the terminal width`, async () => {
-        const frame = await renderConfig(columns, rows);
-        const overflow = findOverflowingLines(frame, columns);
+        const { allFrames } = await renderConfig(columns, rows);
+        const overflow = findOverflowingLines(allFrames, columns);
         expect(overflow).toEqual([]);
     });
 
     test(`config wizard at ${columns}x${rows} renders as expected`, async () => {
-        const frame = await renderConfig(columns, rows);
-        expect(frame).toMatchSnapshot();
+        const { settled } = await renderConfig(columns, rows);
+        expect(settled).toMatchSnapshot();
     });
 }
 
 for (const [columns, rows] of DASHBOARD_SIZES) {
     test(`dashboard at ${columns}x${rows}: no line overflows the terminal width`, async () => {
-        const frame = await renderDashboard(columns, rows);
-        const overflow = findOverflowingLines(frame, columns);
+        const { allFrames } = await renderDashboard(columns, rows);
+        const overflow = findOverflowingLines(allFrames, columns);
         expect(overflow).toEqual([]);
     });
 
     test(`dashboard at ${columns}x${rows} renders as expected`, async () => {
-        const frame = await renderDashboard(columns, rows);
-        expect(frame).toMatchSnapshot();
+        const { settled } = await renderDashboard(columns, rows);
+        expect(settled).toMatchSnapshot();
     });
 }
 
@@ -158,6 +162,6 @@ test('a size usable by the config wizard is never rejected as too-small by the d
     // must not immediately dead-end into "Terminal too small" once the
     // dashboard takes over after launch. stdout.rows=29 -> internal
     // height 28, matching the user's reported "33x28".
-    const frame = await renderDashboard(33, 29);
+    const { settled: frame } = await renderDashboard(33, 29);
     expect(frame).not.toContain('Terminal too small');
 });

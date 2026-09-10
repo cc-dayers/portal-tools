@@ -20,10 +20,13 @@ export function makeFakeStdout(columns, rows) {
     stream.rows = rows;
     stream.isTTY = true;
     let buffer = '';
+    const chunks = [];
     stream.on('data', (chunk) => {
-        buffer += chunk.toString();
+        const text = chunk.toString();
+        buffer += text;
+        chunks.push(text);
     });
-    return { stream, getBuffer: () => buffer };
+    return { stream, getBuffer: () => buffer, getChunks: () => chunks };
 }
 
 export function makeFakeStdin() {
@@ -42,9 +45,29 @@ export function makeFakeStdin() {
  * what you want for "did ANY frame ever render a bad line" checks. For a
  * human to eyeball, print it directly: each repaint reads top-to-bottom
  * like a filmstrip of the session.
+ *
+ * Do NOT snapshot this directly — the number of intermediate repaints
+ * before the UI settles is a timing race (React's update batching), so it
+ * varies between machines/CI and made an earlier version of this file's
+ * snapshot tests flaky. Use lastFrame() for anything you snapshot.
  */
 export function cleanFrames(rawBuffer) {
     return stripAnsi(rawBuffer);
+}
+
+/**
+ * Returns only the LAST repaint Ink wrote, stripped of ANSI codes. Each
+ * call to Ink's internal log-update writes one full repaint in a single
+ * stream.write(), so the last captured chunk (see makeFakeStdout's
+ * getChunks) is deterministically "the state the terminal was left in" —
+ * unlike the full concatenated buffer, this is safe to snapshot.
+ */
+export function lastFrame(chunks) {
+    for (let index = chunks.length - 1; index >= 0; index -= 1) {
+        const clean = stripAnsi(chunks[index]);
+        if (clean.trim().length > 0) return clean;
+    }
+    return '';
 }
 
 /**
