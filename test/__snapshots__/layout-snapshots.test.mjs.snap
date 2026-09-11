@@ -85,7 +85,7 @@ exports[`config wizard at 100x27 renders as expected 1`] = `
 │ │ › Portals                  │ │                                                               │ │
 │ │    2 selected              │ │  Portals                                                      │ │
 │ │   Environment              │ │  Choose one or more React applications to start.              │ │
-│ │    Dev API                 │ │                                                               │ │
+│ │    Frontend + dev API      │ │                                                               │ │
 │ │   Build mode               │ │  › [●] SSO                                                    │ │
 │ │    Dev Server              │ │    [●] Provider                                               │ │
 │ │   Existing servers         │ │    [ ] Coordinator                                            │ │

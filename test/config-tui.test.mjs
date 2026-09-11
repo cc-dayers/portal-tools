@@ -63,8 +63,11 @@ test('narrow layout collapses the section menu and tightens choices at its minim
 test('createInitialTuiDraft provides useful first-run defaults', () => {
     expect(createInitialTuiDraft({}, ['api', 'auth'])).toEqual({
         portals: ['sso', 'provider'],
-        stackMode: 'local-full',
+        stackMode: 'fullstack-local-db',
+        backendRunMode: 'background',
         backendModules: ['api', 'auth'],
+        visualStudioModules: [],
+        backendWatchModules: [],
         buildMode: 'dev',
         existingServerMode: 'auto-restart',
         verbose: false,
@@ -85,7 +88,7 @@ test('createInitialTuiDraft restores a saved dev API configuration', () => {
         }),
     ).toMatchObject({
         portals: ['sso', 'coordinator'],
-        stackMode: 'dev-api',
+        stackMode: 'frontend-dev-api',
         backendModules: ['api'],
         buildMode: 'preview',
         existingServerMode: 'kill-before-start',
@@ -97,7 +100,8 @@ test('createInitialTuiDraft restores a saved dev API configuration', () => {
 test('toLauncherConfig removes backend modules outside local full-stack mode', () => {
     const config = toLauncherConfig({
         portals: ['sso'],
-        stackMode: 'dev-api',
+        stackMode: 'frontend-dev-api',
+        backendRunMode: 'background',
         backendModules: ['api', 'auth'],
         buildMode: 'dev',
         existingServerMode: 'auto-restart',
@@ -105,15 +109,18 @@ test('toLauncherConfig removes backend modules outside local full-stack mode', (
         autoOpen: true,
     });
 
-    expect(config.environment).toBe('dev-api');
+    expect(config.stackMode).toBe('frontend-dev-api');
     expect(config.backendModules).toEqual([]);
 });
 
 test('toLauncherConfig preserves selected local backend modules', () => {
     const config = toLauncherConfig({
         portals: ['sso', 'provider'],
-        stackMode: 'local-full',
+        stackMode: 'fullstack-local-db',
+        backendRunMode: 'mixed',
         backendModules: ['api', 'patients'],
+        visualStudioModules: ['patients'],
+        backendWatchModules: ['api', 'patients'],
         buildMode: 'preview',
         existingServerMode: 'none',
         verbose: true,
@@ -122,8 +129,11 @@ test('toLauncherConfig preserves selected local backend modules', () => {
 
     expect(config).toEqual({
         portals: ['sso', 'provider'],
-        environment: 'local',
+        stackMode: 'fullstack-local-db',
+        backendRunMode: 'mixed',
         backendModules: ['api', 'patients'],
+        visualStudioModules: ['patients'],
+        backendWatchModules: ['api'],
         buildMode: 'preview',
         existingServerMode: 'none',
         verbose: true,

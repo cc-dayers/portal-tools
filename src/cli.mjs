@@ -12,7 +12,7 @@ import {
 } from './protocol-client.mjs';
 import { runSelfUpdate } from './self-update.mjs';
 
-const PACKAGE_VERSION = '0.1.10';
+const PACKAGE_VERSION = '0.1.11';
 
 export function parseCliArgs(args) {
     const hostIndex = args.indexOf('--host');
@@ -27,16 +27,13 @@ export function parseCliArgs(args) {
 }
 
 export function toLauncherSelection(config) {
-    const backendModules = Array.isArray(config?.backendModules) ? config.backendModules : [];
     return {
         portals: Array.isArray(config?.portals) ? config.portals : [],
-        stackMode:
-            config?.environment === 'dev-api'
-                ? 'dev-api'
-                : backendModules.length > 0
-                  ? 'local-full'
-                  : 'local-frontend',
-        backendModules,
+        stackMode: config?.stackMode,
+        backendRunMode: config?.backendRunMode ?? 'background',
+        backendModules: Array.isArray(config?.backendModules) ? config.backendModules : [],
+        visualStudioModules: Array.isArray(config?.visualStudioModules) ? config.visualStudioModules : [],
+        backendWatchModules: Array.isArray(config?.backendWatchModules) ? config.backendWatchModules : [],
         buildMode: config?.buildMode === 'preview' ? 'preview' : 'dev',
         existingServerMode: config?.existingServerMode ?? 'auto-restart',
         verbose: config?.verbose ?? false,
@@ -110,6 +107,8 @@ export async function run(args = process.argv.slice(2)) {
                 defaultBackendModules: session.initialSelection?.backendModules ?? [],
                 portalChoices: session.choices?.portals ?? [],
                 backendChoices: session.choices?.backendModules ?? [],
+                stackModeChoices: session.choices?.stackModes ?? [],
+                backendRunModeChoices: session.choices?.backendRunModes ?? [],
                 existingServerChoices: session.choices?.existingServerModes ?? [],
             });
 

@@ -20,7 +20,7 @@ import process from 'node:process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const PROTOCOL = 'cc.portals.launcher';
+const PROTOCOL = 'cc.portals.launcher.v1';
 const PROTOCOL_VERSION = 1;
 const SCENARIO = process.env.MOCK_SCENARIO || 'happy';
 
@@ -38,6 +38,25 @@ const MOCK_BACKEND_CHOICES = [
     { label: 'Authentication', value: 'auth' },
     { label: 'Patients', value: 'patients' },
     { label: 'Dev Proxy', value: 'proxy' },
+    { label: 'Appointments', value: 'appointments' },
+    { label: 'Data Flows', value: 'dataflows' },
+    { label: 'Notifications', value: 'notifications' },
+    { label: 'Populations', value: 'populations' },
+    { label: 'Tasks', value: 'tasks' },
+    { label: 'Workflows', value: 'workflows' },
+];
+
+const MOCK_STACK_MODE_CHOICES = [
+    { label: 'Full stack — local database', value: 'fullstack-local-db' },
+    { label: 'Full stack — dev database', value: 'fullstack-dev-db' },
+    { label: 'Frontend — local APIs', value: 'frontend-local-api' },
+    { label: 'Frontend — dev APIs', value: 'frontend-dev-api' },
+];
+
+const MOCK_BACKEND_RUN_MODE_CHOICES = [
+    { label: 'Background', value: 'background' },
+    { label: 'Visual Studio', value: 'vs' },
+    { label: 'Mixed', value: 'mixed' },
 ];
 
 const MOCK_EXISTING_SERVER_CHOICES = [
@@ -48,8 +67,11 @@ const MOCK_EXISTING_SERVER_CHOICES = [
 
 const MOCK_SAVED_CONFIG = {
     portals: ['sso', 'provider'],
-    environment: 'dev-api',
+    stackMode: 'frontend-dev-api',
+    backendRunMode: 'background',
     backendModules: [],
+    visualStudioModules: [],
+    backendWatchModules: [],
     buildMode: 'dev',
     existingServerMode: 'auto-restart',
     verbose: false,
@@ -111,8 +133,11 @@ export function createMockLauncherHost({
             savedConfig: MOCK_SAVED_CONFIG,
             initialSelection: {
                 portals: MOCK_SAVED_CONFIG.portals,
-                stackMode: 'dev-api',
+                stackMode: 'frontend-dev-api',
+                backendRunMode: 'background',
                 backendModules: [],
+                visualStudioModules: [],
+                backendWatchModules: [],
                 buildMode: 'dev',
                 existingServerMode: 'auto-restart',
                 verbose: false,
@@ -121,6 +146,8 @@ export function createMockLauncherHost({
             choices: {
                 portals: MOCK_PORTAL_CHOICES,
                 backendModules: MOCK_BACKEND_CHOICES,
+                stackModes: MOCK_STACK_MODE_CHOICES,
+                backendRunModes: MOCK_BACKEND_RUN_MODE_CHOICES,
                 existingServerModes: MOCK_EXISTING_SERVER_CHOICES,
             },
         });

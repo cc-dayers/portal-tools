@@ -97,15 +97,20 @@ export function createInitialTuiDraft(config, defaultBackendModules = []) {
         : defaultBackendModules;
     const stackMode =
         config.environment === 'dev-api'
-            ? 'dev-api'
+            ? 'frontend-dev-api'
             : config.environment === 'local' && backendModules.length === 0
-              ? 'local-frontend'
-              : 'local-full';
+              ? 'frontend-local-api'
+              : config.backendProfile === 'dev' ? 'fullstack-dev-db' : 'fullstack-local-db';
+    const visualStudioModules = Array.isArray(config.visualStudioModules) ? config.visualStudioModules : [];
+    const visualCount = backendModules.filter(alias => visualStudioModules.includes(alias)).length;
 
     return {
         portals,
         stackMode,
+        backendRunMode: visualCount === 0 ? 'background' : visualCount === backendModules.length ? 'vs' : 'mixed',
         backendModules,
+        visualStudioModules,
+        backendWatchModules: Array.isArray(config.backendWatchModules) ? config.backendWatchModules : [],
         buildMode: config.buildMode === 'preview' ? 'preview' : 'dev',
         existingServerMode: config.existingServerMode ?? 'auto-restart',
         verbose: config.verbose ?? false,
@@ -114,12 +119,19 @@ export function createInitialTuiDraft(config, defaultBackendModules = []) {
 }
 
 export function toLauncherConfig(draft) {
-    const environment = draft.stackMode === 'dev-api' ? 'dev-api' : 'local';
+    const fullStack = draft.stackMode.startsWith('fullstack-');
+    const backendModules = fullStack ? draft.backendModules : [];
+    const visualStudioModules = draft.backendRunMode === 'vs'
+        ? backendModules : draft.backendRunMode === 'mixed' ? draft.visualStudioModules : [];
+    const backgroundModules = backendModules.filter(alias => !visualStudioModules.includes(alias));
 
     return {
         portals: draft.portals,
-        environment,
-        backendModules: draft.stackMode === 'local-full' ? draft.backendModules : [],
+        stackMode: draft.stackMode,
+        backendRunMode: draft.backendRunMode,
+        backendModules,
+        visualStudioModules,
+        backendWatchModules: (draft.backendWatchModules ?? []).filter(alias => backgroundModules.includes(alias)),
         buildMode: draft.buildMode,
         existingServerMode: draft.existingServerMode,
         verbose: draft.verbose,
@@ -132,6 +144,17 @@ export async function runPortalConfigTui({
     defaultBackendModules,
     portalChoices,
     backendChoices,
+    stackModeChoices = [
+        { label: 'Full stack — local database', value: 'fullstack-local-db' },
+        { label: 'Full stack — dev database', value: 'fullstack-dev-db' },
+        { label: 'Frontend — local APIs', value: 'frontend-local-api' },
+        { label: 'Frontend — dev APIs', value: 'frontend-dev-api' },
+    ],
+    backendRunModeChoices = [
+        { label: 'Background', value: 'background' },
+        { label: 'Visual Studio', value: 'vs' },
+        { label: 'Mixed', value: 'mixed' },
+    ],
     existingServerChoices,
     stdin = process.stdin,
     stdout = process.stdout,
@@ -151,6 +174,8 @@ export async function runPortalConfigTui({
                 initialDraft: createInitialTuiDraft(config, defaultBackendModules),
                 portalChoices,
                 backendChoices,
+                stackModeChoices,
+                backendRunModeChoices,
                 existingServerChoices,
                 onSubmit(value) {
                     result = toLauncherConfig(value);
@@ -178,6 +203,8 @@ function PortalConfigApp({
     initialDraft,
     portalChoices,
     backendChoices,
+    stackModeChoices,
+    backendRunModeChoices,
     existingServerChoices,
     onSubmit,
 }) {
@@ -190,8 +217,8 @@ function PortalConfigApp({
     const [mouseEvent, setMouseEvent] = useState(null);
 
     const sections = useMemo(
-        () => buildSections(draft, portalChoices, backendChoices, existingServerChoices),
-        [draft, portalChoices, backendChoices, existingServerChoices],
+        () => buildSections(draft, portalChoices, backendChoices, stackModeChoices, backendRunModeChoices, existingServerChoices),
+        [draft, portalChoices, backendChoices, stackModeChoices, backendRunModeChoices, existingServerChoices],
     );
     const activeSection = sections[sectionIndex] ?? sections[0];
     const activeChoice = activeSection.choices?.[choiceIndex];
@@ -228,7 +255,7 @@ function PortalConfigApp({
             launch();
             return;
         }
-        if (!choice) return;
+        if (!choice || choice.disabled) return;
 
         setDraft((current) => updateDraft(current, section, choice));
         setNotice('');
@@ -415,7 +442,7 @@ function ConfigLayout({
 }
 
 function CompactHeader({ draft, sectionIndex, sectionCount }) {
-    const environment = draft.stackMode === 'dev-api' ? 'DEV API' : 'LOCAL';
+    const environment = stackModeBadge(draft.stackMode);
     return h(
         Box,
         { paddingX: 1, justifyContent: 'space-between' },
@@ -647,7 +674,7 @@ function NarrowLayout({
 }
 
 function NarrowHeader({ draft, sectionIndex, sectionCount, width }) {
-    const environment = draft.stackMode === 'dev-api' ? 'DEV API' : 'LOCAL';
+    const environment = stackModeBadge(draft.stackMode);
     const status = `${sectionIndex + 1}/${sectionCount} · ${environment} · ${draft.portals.length} portal${draft.portals.length === 1 ? '' : 's'}`;
 
     return h(
@@ -698,7 +725,7 @@ function SmallTerminalNotice({ terminal }) {
 }
 
 function Header({ draft }) {
-    const environment = draft.stackMode === 'dev-api' ? 'DEV API' : 'LOCAL';
+    const environment = stackModeBadge(draft.stackMode);
 
     return h(
         Box,
@@ -888,7 +915,9 @@ function Review({ draft, portalChoices, backendChoices, width = Number.POSITIVE_
     const rows = [
         ['Portals', portalNames.join(', ') || 'None'],
         ['Environment', stackModeLabel(draft.stackMode)],
-        ['Backend', draft.stackMode === 'local-full' ? backendNames.join(', ') || 'None' : 'Skipped'],
+        ['Backend', draft.stackMode.startsWith('fullstack-') ? backendNames.join(', ') || 'None' : 'Skipped'],
+        ['Backend run', draft.stackMode.startsWith('fullstack-') ? draft.backendRunMode : 'Skipped'],
+        ['Hot reload', draft.backendWatchModules.join(', ') || 'None'],
         ['Build', draft.buildMode === 'preview' ? 'Build + Preview' : 'Dev Server'],
         ['Output', draft.verbose ? 'Live terminal stream' : 'Quiet log file'],
         ['Browser', draft.autoOpen ? 'Open when ready' : 'Do not open'],
@@ -947,7 +976,7 @@ function CancelButton({ onPress }) {
     return h(Box, { ref }, h(Text, { color: 'gray' }, 'Esc/q/click cancel'));
 }
 
-function buildSections(draft, portalChoices, backendChoices, existingServerChoices) {
+function buildSections(draft, portalChoices, backendChoices, stackModeChoices, backendRunModeChoices, existingServerChoices) {
     const sections = [
         {
             id: 'portals',
@@ -965,31 +994,19 @@ function buildSections(draft, portalChoices, backendChoices, existingServerChoic
             summary: stackModeLabel(draft.stackMode),
             kind: 'single',
             field: 'stackMode',
-            choices: withSelection(
-                [
-                    {
-                        label: 'Local — full-stack',
-                        value: 'local-full',
-                        description: 'Local API and selected .NET backend modules',
-                    },
-                    {
-                        label: 'Local — frontend only',
-                        value: 'local-frontend',
-                        description: 'Local frontend portals without backend modules',
-                    },
-                    {
-                        label: 'Dev API',
-                        value: 'dev-api',
-                        description: 'Remote development environment API',
-                    },
-                ],
-                draft.stackMode,
-            ),
+            choices: withSelection(stackModeChoices, draft.stackMode),
         },
     ];
 
-    if (draft.stackMode === 'local-full') {
+    if (draft.stackMode.startsWith('fullstack-')) {
         sections.push({
+            id: 'backendRunMode',
+            title: 'Backend execution',
+            description: 'Let the launcher manage modules, open them in Visual Studio, or mix both.',
+            summary: backendRunModeChoices.find(choice => choice.value === draft.backendRunMode)?.label,
+            kind: 'single', field: 'backendRunMode',
+            choices: withSelection(backendRunModeChoices, draft.backendRunMode),
+        }, {
             id: 'backendModules',
             title: 'Backend modules',
             description: 'Choose the local .NET services to run. An empty selection is allowed.',
@@ -998,6 +1015,26 @@ function buildSections(draft, portalChoices, backendChoices, existingServerChoic
             field: 'backendModules',
             choices: withSelection(backendChoices, draft.backendModules),
         });
+        if (draft.backendRunMode === 'mixed') {
+            sections.push({
+                id: 'visualStudioModules', title: 'Visual Studio modules',
+                description: 'Selected modules run in Visual Studio; the launcher manages the rest.',
+                summary: `${draft.visualStudioModules.filter(alias => draft.backendModules.includes(alias)).length} in Visual Studio`,
+                kind: 'multi', field: 'visualStudioModules',
+                choices: withSelection(backendChoices.filter(choice => draft.backendModules.includes(choice.value)), draft.visualStudioModules),
+            });
+        }
+        if (draft.backendRunMode !== 'vs') {
+            const background = draft.backendModules.filter(alias =>
+                draft.backendRunMode !== 'mixed' || !draft.visualStudioModules.includes(alias));
+            sections.push({
+                id: 'backendWatchModules', title: 'Backend hot reload',
+                description: 'Enable hot reload selectively; leaving this empty uses fewer resources.',
+                summary: `${draft.backendWatchModules.filter(alias => background.includes(alias)).length} watching`,
+                kind: 'multi', field: 'backendWatchModules',
+                choices: withSelection(backendChoices.filter(choice => background.includes(choice.value)), draft.backendWatchModules),
+            });
+        }
     }
 
     sections.push(
@@ -1085,7 +1122,12 @@ function updateDraft(draft, section, choice) {
         } else {
             selected.add(choice.value);
         }
-        return { ...draft, [section.field]: [...selected] };
+        const next = { ...draft, [section.field]: [...selected] };
+        if (section.field === 'backendModules') {
+            next.visualStudioModules = next.visualStudioModules.filter(alias => selected.has(alias));
+            next.backendWatchModules = next.backendWatchModules.filter(alias => selected.has(alias));
+        }
+        return next;
     }
 
     return { ...draft, [section.field]: choice.value };
@@ -1096,9 +1138,17 @@ function labelsFor(values, choices) {
 }
 
 function stackModeLabel(stackMode) {
-    if (stackMode === 'dev-api') return 'Dev API';
-    if (stackMode === 'local-frontend') return 'Local frontend only';
-    return 'Local full-stack';
+    if (stackMode === 'frontend-dev-api') return 'Frontend + dev API';
+    if (stackMode === 'frontend-local-api') return 'Frontend + local API';
+    if (stackMode === 'fullstack-dev-db') return 'Full-stack + dev data';
+    return 'Full-stack + local data';
+}
+
+function stackModeBadge(stackMode) {
+    if (stackMode === 'frontend-dev-api') return 'DEV API';
+    if (stackMode === 'frontend-local-api') return 'LOCAL API';
+    if (stackMode === 'fullstack-dev-db') return 'DEV DB';
+    return 'LOCAL DB';
 }
 
 function useTerminalSize() {

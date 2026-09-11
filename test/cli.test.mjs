@@ -30,8 +30,11 @@ test('toLauncherSelection restores the wizard stack mode', () => {
     expect(
         toLauncherSelection({
             portals: ['provider'],
-            environment: 'local',
+            stackMode: 'fullstack-dev-db',
+            backendRunMode: 'mixed',
             backendModules: ['api'],
+            visualStudioModules: ['api'],
+            backendWatchModules: [],
             buildMode: 'preview',
             existingServerMode: 'auto-restart',
             verbose: false,
@@ -39,8 +42,11 @@ test('toLauncherSelection restores the wizard stack mode', () => {
         }),
     ).toEqual({
         portals: ['provider'],
-        stackMode: 'local-full',
+        stackMode: 'fullstack-dev-db',
+        backendRunMode: 'mixed',
         backendModules: ['api'],
+        visualStudioModules: ['api'],
+        backendWatchModules: [],
         buildMode: 'preview',
         existingServerMode: 'auto-restart',
         verbose: false,

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
 
-export const PROTOCOL = 'cc.portals.launcher';
+export const PROTOCOL = 'cc.portals.launcher.v1';
 export const PROTOCOL_VERSION = 1;
 const MAX_LINE_CHARS = 1_048_576;
 const MAX_BUFFERED_LOGS = 500;
@@ -202,7 +202,7 @@ export function createProtocolClient({ input, output, errorInput, onClose = () =
             }
             await send('client.hello', {
                 selectedVersion: PROTOCOL_VERSION,
-                client: { name: 'cc-portals-tui', version: '0.1.10' },
+                client: { name: 'cc-portals-tui', version: '0.1.11' },
             });
             return withTimeout(sessionPromise, REQUEST_TIMEOUT_MS, 'launcher session');
         },
