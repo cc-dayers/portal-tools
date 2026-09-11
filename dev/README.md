@@ -1,7 +1,7 @@
 # Developing the TUI without the Portals monorepo
 
 `cc-portals-tui` talks to whatever launcher host it's pointed at over a
-small newline-JSON protocol (`cc.portals.launcher` v1) via stdin/stdout of a
+small newline-JSON protocol (`cc.portals.launcher.v1`) via stdin/stdout of a
 child process — see `src/protocol-client.mjs`. In production that host is
 `../../scripts/portal-launcher-host.mjs` in the main Portals repo, which
 spawns real dev servers.
