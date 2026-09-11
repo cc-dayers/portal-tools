@@ -58,6 +58,11 @@ export function getVisibleLogRows(height, layoutMode) {
     return Math.max(1, height - 6);
 }
 
+export function getAvailableBackendChoices(choices, targets) {
+    const running = new Set((targets ?? []).map(target => target.backendAlias).filter(Boolean));
+    return (choices ?? []).filter(choice => !running.has(choice.value));
+}
+
 export async function runPortalDashboard({
     launchOptions,
     launchPortals,
@@ -113,6 +118,7 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
     const [actionBusy, setActionBusy] = useState('');
     const [mouseEvent, setMouseEvent] = useState(null);
     const [shutdownRequested, setShutdownRequested] = useState(false);
+    const [addBackend, setAddBackend] = useState(null);
     const controllerRef = useRef(null);
     const pendingLogsRef = useRef([]);
     const nextLogIdRef = useRef(0);
@@ -131,6 +137,7 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
         getDashboardRowBudget(terminal.height, layoutMode),
     );
     const isShuttingDown = shutdownRequested || snapshot.isShuttingDown;
+    const availableBackends = getAvailableBackendChoices(launchOptions?.backendChoices, targets);
 
     const updateSnapshot = useCallback((value) => {
         try {
@@ -369,6 +376,33 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
     });
 
     useInput((input, key) => {
+        if (addBackend) {
+            const choices = addBackend.step === 'module'
+                ? availableBackends
+                : addBackend.step === 'mode'
+                  ? [{ value: 'background', label: 'Background' }, { value: 'vs', label: 'Visual Studio' }]
+                  : [{ value: false, label: 'No hot reload' }, { value: true, label: 'Enable hot reload' }];
+            if (key.escape || input === 'q') { setAddBackend(null); return; }
+            if (key.upArrow) { setAddBackend(current => ({ ...current, index: (current.index - 1 + choices.length) % choices.length })); return; }
+            if (key.downArrow) { setAddBackend(current => ({ ...current, index: (current.index + 1) % choices.length })); return; }
+            if (key.return && choices.length) {
+                const choice = choices[addBackend.index];
+                if (addBackend.step === 'module') {
+                    setAddBackend({ step: 'mode', index: 0, module: choice.value, moduleLabel: choice.label });
+                } else if (addBackend.step === 'mode') {
+                    if (choice.value === 'vs') {
+                        invokeController(`Adding ${addBackend.moduleLabel}`, 'addBackend', { module: addBackend.module, runMode: 'vs', watch: false });
+                        setAddBackend(null);
+                    } else {
+                        setAddBackend(current => ({ ...current, step: 'watch', index: 0, runMode: 'background' }));
+                    }
+                } else {
+                    invokeController(`Adding ${addBackend.moduleLabel}`, 'addBackend', { module: addBackend.module, runMode: 'background', watch: choice.value });
+                    setAddBackend(null);
+                }
+            }
+            return;
+        }
         if (key.ctrl && input === 'c') {
             requestShutdown('Ctrl+C');
             return;
@@ -395,7 +429,10 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
         }
 
         if (activeTab === 'dashboard') {
-            if (key.upArrow) selectTarget(-1);
+            if (input === 'a' && launchOptions?.canAddBackend && availableBackends.length) {
+                setAddBackend({ step: 'module', index: 0 });
+            }
+            else if (key.upArrow) selectTarget(-1);
             else if (key.downArrow) selectTarget(1);
             else if (input === 'r' && selectedTarget)
                 invokeController(`Restarting ${selectedTarget.label}`, 'restart', selectedTarget.id);
@@ -444,7 +481,13 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
                           flexDirection: 'column',
                           paddingX: layoutMode === 'full' ? 1 : 0,
                       },
-                      activeTab === 'dashboard'
+                      addBackend
+                          ? h(AddBackendPanel, { state: addBackend, choices: addBackend.step === 'module'
+                                ? availableBackends
+                                : addBackend.step === 'mode'
+                                  ? [{ value: 'background', label: 'Background' }, { value: 'vs', label: 'Visual Studio' }]
+                                  : [{ value: false, label: 'No hot reload' }, { value: true, label: 'Enable hot reload' }] })
+                          : activeTab === 'dashboard'
                           ? h(DashboardView, {
                                 targets: targetWindow.items,
                                 totalTargets: targets.length,
@@ -488,9 +531,20 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
                       error: Boolean(error),
                       width: terminal.width,
                       layoutMode,
+                      canAddBackend: launchOptions?.canAddBackend && availableBackends.length > 0,
                   }),
               ),
     );
+}
+
+function AddBackendPanel({ state, choices }) {
+    const title = state.step === 'module' ? 'Add backend module'
+        : state.step === 'mode' ? `Run ${state.moduleLabel}` : `Hot reload ${state.moduleLabel}`;
+    return h(Box, { flexDirection: 'column', paddingX: 2, paddingY: 1 },
+        h(Text, { bold: true, color: 'cyan' }, title),
+        ...choices.map((choice, index) => h(Text, { key: String(choice.value), color: index === state.index ? 'cyan' : 'white' },
+            `${index === state.index ? '›' : ' '} ${choice.label}`)),
+        h(Text, { color: 'gray' }, '↑/↓ choose · Enter continue · Esc cancel'));
 }
 
 
@@ -1052,8 +1106,8 @@ function LogRow({ entry, width }) {
     );
 }
 
-function Footer({ activeTab, notice, error, width, layoutMode }) {
-    const controls =
+function Footer({ activeTab, notice, error, width, layoutMode, canAddBackend }) {
+    const baseControls =
         layoutMode === 'minimal'
             ? activeTab === 'logs'
                 ? '1 dashboard · q stop'
@@ -1061,6 +1115,7 @@ function Footer({ activeTab, notice, error, width, layoutMode }) {
             : activeTab === 'logs'
               ? 'Tab/1/2 switch · ↑/↓ PgUp/PgDn scroll · f follow · c clear · q stop'
               : 'Tab/1/2 switch · ↑/↓ select · s start/stop · r restart · o open · q stop all';
+    const controls = activeTab === 'dashboard' && canAddBackend ? `a add backend · ${baseControls}` : baseControls;
     const controlsWidth = Math.min(controls.length, Math.max(20, Math.floor(width * 0.65)));
     const available = Math.max(5, width - controlsWidth - 6);
 

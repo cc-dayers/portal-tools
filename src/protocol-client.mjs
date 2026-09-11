@@ -202,12 +202,15 @@ export function createProtocolClient({ input, output, errorInput, onClose = () =
             }
             await send('client.hello', {
                 selectedVersion: PROTOCOL_VERSION,
-                client: { name: 'cc-portals-tui', version: '0.1.11' },
+                client: { name: 'cc-portals-tui', version: '0.1.12' },
             });
             return withTimeout(sessionPromise, REQUEST_TIMEOUT_MS, 'launcher session');
         },
         get session() {
             return session;
+        },
+        get hello() {
+            return hello;
         },
         get lastSnapshot() {
             return lastSnapshot;
@@ -293,6 +296,7 @@ function createProtocolController(client) {
         stop: (targetId) => requestAccepted(client, 'command.target.stop', { targetId }),
         restart: (targetId) => requestAccepted(client, 'command.target.restart', { targetId }),
         open: (targetId) => requestAccepted(client, 'command.target.open', { targetId }),
+        addBackend: (request) => requestAccepted(client, 'command.backend.add', request),
         restartAll: () => requestAccepted(client, 'command.session.restart-all'),
         stopAll: (reason = 'quit') =>
             requestAccepted(client, 'command.session.shutdown', { cause: 'quit', reason }),

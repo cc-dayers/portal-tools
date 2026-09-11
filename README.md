@@ -19,6 +19,10 @@ update an existing installation. Use `yarn start --tui --config` to reopen the
 configuration wizard. The standard `yarn start` launcher remains available
 without installing this package.
 
+From a running dashboard, press `a` to add a backend module without restarting
+the existing session. The host offers background or Visual Studio execution
+and optional hot reload when supported by the selected mode.
+
 Do not normally invoke `cc-portals-tui` directly. The Portals launcher supplies
 the matching host script and repository context.
 

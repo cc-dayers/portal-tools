@@ -12,7 +12,7 @@ import {
 } from './protocol-client.mjs';
 import { runSelfUpdate } from './self-update.mjs';
 
-const PACKAGE_VERSION = '0.1.11';
+const PACKAGE_VERSION = '0.1.12';
 
 export function parseCliArgs(args) {
     const hostIndex = args.indexOf('--host');
@@ -125,6 +125,8 @@ export async function run(args = process.argv.slice(2)) {
             launchOptions: {
                 targets: [],
                 logPath: session.logPath,
+                backendChoices: session.choices?.backendModules ?? [],
+                canAddBackend: client.hello?.capabilities?.commands?.includes('backend.add') ?? false,
             },
             launchPortals: createDashboardLauncherAdapter(client, launchPayload),
         });

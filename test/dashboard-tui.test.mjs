@@ -4,10 +4,18 @@ import { expect, test, vi } from 'vitest';
 import {
     getDashboardLayoutMode,
     getDashboardRowBudget,
+    getAvailableBackendChoices,
     getVisibleLogRows,
     getVisibleTargetWindow,
     runPortalDashboard,
 } from '../src/dashboard-tui.mjs';
+
+test('add-backend choices exclude modules already present in the dashboard', () => {
+    expect(getAvailableBackendChoices(
+        [{ value: 'api', label: 'API' }, { value: 'appointments', label: 'Appointments' }],
+        [{ id: 'backend-api', backendAlias: 'api' }],
+    )).toEqual([{ value: 'appointments', label: 'Appointments' }]);
+});
 
 
 test('dashboard layout keeps a short standard-width terminal usable', () => {

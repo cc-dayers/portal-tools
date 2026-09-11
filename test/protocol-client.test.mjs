@@ -73,7 +73,14 @@ test('dashboard adapter maps controller actions and streamed events to the exist
     hostOutput.write(serverMessage('response.ok', 7, { accepted: true }, restartRequest.requestId));
     await expect(restartPromise).resolves.toBe(true);
 
-    hostOutput.write(serverMessage('event.session-exit', 8, { exitCode: 0 }));
+    const addPromise = controller.addBackend({ module: 'appointments', runMode: 'background', watch: true });
+    await waitFor(() => requests.some((request) => request.type === 'command.backend.add'));
+    const addRequest = requests.find((request) => request.type === 'command.backend.add');
+    expect(addRequest.payload).toEqual({ module: 'appointments', runMode: 'background', watch: true });
+    hostOutput.write(serverMessage('response.ok', 8, { accepted: true }, addRequest.requestId));
+    await expect(addPromise).resolves.toBe(true);
+
+    hostOutput.write(serverMessage('event.session-exit', 9, { exitCode: 0 }));
     await expect(launchPromise).resolves.toBe(0);
 });
 

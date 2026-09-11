@@ -295,6 +295,9 @@ export function createMockLauncherHost({
             case 'command.session.restart-all':
                 send('response.ok', { command: message.type, accepted: true }, message.requestId);
                 break;
+            case 'command.backend.add':
+                send('response.ok', { command: message.type, accepted: true }, message.requestId);
+                break;
             case 'command.session.shutdown':
                 handleShutdown(message);
                 break;
@@ -338,6 +341,7 @@ export function createMockLauncherHost({
                 'target.stop',
                 'target.restart',
                 'target.open',
+                'backend.add',
                 'session.restart-all',
                 'session.shutdown',
             ],
