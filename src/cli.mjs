@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import process from 'node:process';
+import fs from 'node:fs';
+import { PassThrough, Writable } from 'node:stream';
 
 import { runPortalConfigTui } from './config-tui.mjs';
 import { runPortalDashboard } from './dashboard-tui.mjs';
@@ -12,18 +14,49 @@ import {
 } from './protocol-client.mjs';
 import { runSelfUpdate } from './self-update.mjs';
 
-const PACKAGE_VERSION = '0.1.12';
+const PACKAGE_VERSION = '0.1.13';
 
 export function parseCliArgs(args) {
     const hostIndex = args.indexOf('--host');
     const separatorIndex = args.indexOf('--');
+    const performanceIndex = args.indexOf('--performance-steady-ms');
+    const performanceValue = performanceIndex >= 0 ? Number(args[performanceIndex + 1]) : null;
+    if (
+        performanceIndex >= 0 &&
+        (!Number.isInteger(performanceValue) || performanceValue < 0)
+    ) {
+        throw new Error('--performance-steady-ms requires a nonnegative integer');
+    }
     return {
         protocolInfo: args.includes('--protocol-info'),
         help: args.includes('--help') || args.includes('-h'),
         update: args.includes('--update'),
+        performanceSteadyMs: performanceValue,
         hostPath: hostIndex >= 0 ? args[hostIndex + 1] ?? '' : '',
         hostArgs: separatorIndex >= 0 ? args.slice(separatorIndex + 1) : [],
     };
+}
+
+export function isReadySnapshot(snapshot) {
+    return (
+        Array.isArray(snapshot?.targets) &&
+        snapshot.targets.length > 0 &&
+        snapshot.targets.every((target) => target.status === 'ready')
+    );
+}
+
+export function writePerformanceState(filePath, snapshot, append = fs.appendFileSync) {
+    if (!filePath) return;
+    const targets = (snapshot?.targets ?? []).map((target) => ({
+        id: target.id,
+        status: target.status,
+        startedAt: Number.isFinite(target.startedAt) ? target.startedAt : null,
+        readyAt: Number.isFinite(target.readyAt) ? target.readyAt : null,
+        readySignal: target.readySignal ?? null,
+        adopted: Boolean(target.adopted),
+        failureReason: target.failureReason ?? null,
+    }));
+    append(filePath, `${JSON.stringify({ targets })}\n`);
 }
 
 export function toLauncherSelection(config) {
@@ -68,6 +101,7 @@ export async function run(args = process.argv.slice(2)) {
                 version: PACKAGE_VERSION,
                 protocol: PROTOCOL,
                 supportedVersions: [PROTOCOL_VERSION],
+                performance: { headless: true },
             })}\n`,
         );
         return 0;
@@ -77,7 +111,10 @@ export async function run(args = process.argv.slice(2)) {
         process.stderr.write('Missing required --host <portal-launcher-host.mjs>.\n');
         return 2;
     }
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    if (
+        parsed.performanceSteadyMs == null &&
+        (!process.stdin.isTTY || !process.stdout.isTTY)
+    ) {
         process.stderr.write('cc-portals-tui requires an interactive terminal.\n');
         return 2;
     }
@@ -121,7 +158,22 @@ export async function run(args = process.argv.slice(2)) {
             };
         }
 
-        return await runPortalDashboard({
+        let performanceTimer;
+        let stopPerformanceListener;
+        if (parsed.performanceSteadyMs != null) {
+            stopPerformanceListener = client.onState((snapshot) => {
+                writePerformanceState(process.env.PORTALS_PERFORMANCE_STATE_PATH, snapshot);
+                if (performanceTimer || !isReadySnapshot(snapshot)) return;
+                performanceTimer = setTimeout(
+                    () => void client.shutdown('quit', 'performance measurement complete'),
+                    parsed.performanceSteadyMs,
+                );
+            });
+        }
+        const terminal =
+            parsed.performanceSteadyMs == null ? {} : createPerformanceTerminal();
+        try {
+            return await runPortalDashboard({
             launchOptions: {
                 targets: [],
                 logPath: session.logPath,
@@ -129,7 +181,12 @@ export async function run(args = process.argv.slice(2)) {
                 canAddBackend: client.hello?.capabilities?.commands?.includes('backend.add') ?? false,
             },
             launchPortals: createDashboardLauncherAdapter(client, launchPayload),
-        });
+                ...terminal,
+            });
+        } finally {
+            clearTimeout(performanceTimer);
+            stopPerformanceListener?.();
+        }
     } catch (error) {
         process.stderr.write(`Portal TUI failed: ${sanitizeMessage(error?.message)}\n`);
         client?.close();
@@ -138,6 +195,20 @@ export async function run(args = process.argv.slice(2)) {
         process.removeListener('SIGINT', handleInterrupt);
         process.removeListener('SIGTERM', handleTerminate);
     }
+}
+
+export function createPerformanceTerminal() {
+    const stdin = new PassThrough();
+    stdin.isTTY = true;
+    stdin.setRawMode = () => stdin;
+    stdin.ref = () => stdin;
+    stdin.unref = () => stdin;
+    const stdout = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    stdout.isTTY = true;
+    stdout.columns = 120;
+    stdout.rows = 30;
+    const stderr = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    return { stdin, stdout, stderr };
 }
 
 function sanitizeMessage(value) {

@@ -1,6 +1,12 @@
 import { expect, test } from 'vitest';
 
-import { parseCliArgs, toLauncherSelection } from '../src/cli.mjs';
+import {
+    createPerformanceTerminal,
+    isReadySnapshot,
+    parseCliArgs,
+    toLauncherSelection,
+    writePerformanceState,
+} from '../src/cli.mjs';
 
 test('parseCliArgs separates the host script from forwarded launcher flags', () => {
     expect(
@@ -15,8 +21,71 @@ test('parseCliArgs separates the host script from forwarded launcher flags', () 
         protocolInfo: false,
         help: false,
         update: false,
+        performanceSteadyMs: null,
         hostPath: 'C:/repo/Portals/scripts/portal-launcher-host.mjs',
         hostArgs: ['--config', '--verbose'],
+    });
+});
+
+test('parseCliArgs accepts the internal performance steady-state duration', () => {
+    expect(parseCliArgs(['--performance-steady-ms', '1500'])).toMatchObject({
+        performanceSteadyMs: 1500,
+    });
+    expect(() => parseCliArgs(['--performance-steady-ms', '-1'])).toThrow(
+        '--performance-steady-ms requires a nonnegative integer',
+    );
+});
+
+test('performance readiness requires every target to be ready', () => {
+    expect(isReadySnapshot({ targets: [{ status: 'ready' }, { status: 'starting' }] })).toBe(
+        false,
+    );
+    expect(isReadySnapshot({ targets: [{ status: 'ready' }, { status: 'ready' }] })).toBe(true);
+    expect(isReadySnapshot({ targets: [] })).toBe(false);
+});
+
+test('performance terminal implements the TTY controls Ink requires', () => {
+    const terminal = createPerformanceTerminal();
+    expect(terminal.stdin.isTTY).toBe(true);
+    expect(terminal.stdin.ref()).toBe(terminal.stdin);
+    expect(terminal.stdin.unref()).toBe(terminal.stdin);
+    expect(terminal.stdin.setRawMode(true)).toBe(terminal.stdin);
+});
+
+test('performance state output contains lifecycle fields without launcher paths', () => {
+    let written;
+    writePerformanceState(
+        'state.ndjson',
+        {
+            logPath: 'C:/private/portals.log',
+            targets: [
+                {
+                    id: 'sso-local',
+                    status: 'ready',
+                    startedAt: 100,
+                    readyAt: 200,
+                    readySignal: 'Vite ready',
+                    command: 'secret command',
+                },
+            ],
+        },
+        (_path, value) => {
+            written = JSON.parse(value);
+        },
+    );
+
+    expect(written).toEqual({
+        targets: [
+            {
+                id: 'sso-local',
+                status: 'ready',
+                startedAt: 100,
+                readyAt: 200,
+                readySignal: 'Vite ready',
+                adopted: false,
+                failureReason: null,
+            },
+        ],
     });
 });
 
