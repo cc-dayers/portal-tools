@@ -1138,18 +1138,14 @@ function useTerminalSize() {
     );
     const [size, setSize] = useState(getSize);
 
+    // stdout here is createThrottledOutput's facade, which already coalesces
+    // native resize storms into one 'resize' emission per interval (see
+    // output.mjs). Debouncing again on top of that just doubles the latency
+    // between a real resize and the redraw, for no extra coalescing benefit.
     useEffect(() => {
-        let resizeTimer = null;
-        const handleResize = () => {
-            if (resizeTimer) return;
-            resizeTimer = setTimeout(() => {
-                resizeTimer = null;
-                setSize(getSize());
-            }, 50);
-        };
+        const handleResize = () => setSize(getSize());
         stdout.on?.('resize', handleResize);
         return () => {
-            clearTimeout(resizeTimer);
             stdout.off?.('resize', handleResize);
         };
     }, [getSize, stdout]);

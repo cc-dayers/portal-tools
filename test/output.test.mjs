@@ -20,3 +20,18 @@ test('createThrottledOutput coalesces resize event storms', async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(listener).toHaveBeenCalledTimes(1);
 });
+
+test('createThrottledOutput detects dimension changes when resize events are missed', async () => {
+    const output = new PassThrough();
+    output.columns = 80;
+    output.rows = 24;
+    const throttled = createThrottledOutput(output, 5, 10);
+    const listener = vi.fn();
+    throttled.stdout.on('resize', listener);
+
+    output.columns = 100;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    throttled.dispose();
+});

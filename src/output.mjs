@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-export function createThrottledOutput(output, intervalMs = 50) {
+export function createThrottledOutput(output, intervalMs = 50, pollIntervalMs = 250) {
     const resizeEvents = new EventEmitter();
     let resizeTimer = null;
     let disposed = false;
@@ -15,6 +15,23 @@ export function createThrottledOutput(output, intervalMs = 50) {
     };
 
     output.on?.('resize', handleResize);
+
+    // Some terminals/multiplexers deliver (or forward) the native 'resize'
+    // event late or not at all, which otherwise leaves the UI stuck at the
+    // old size until something unrelated happens to trigger a re-render.
+    // Poll the reported dimensions as a fallback so a resize is never missed
+    // for longer than pollIntervalMs.
+    let lastColumns = output.columns;
+    let lastRows = output.rows;
+    const pollTimer = setInterval(() => {
+        if (disposed) return;
+        if (output.columns !== lastColumns || output.rows !== lastRows) {
+            lastColumns = output.columns;
+            lastRows = output.rows;
+            handleResize();
+        }
+    }, pollIntervalMs);
+    pollTimer.unref?.();
 
     let facade;
     facade = new Proxy(output, {
@@ -46,6 +63,7 @@ export function createThrottledOutput(output, intervalMs = 50) {
             disposed = true;
             clearTimeout(resizeTimer);
             resizeTimer = null;
+            clearInterval(pollTimer);
             resizeEvents.removeAllListeners();
             output.off?.('resize', handleResize);
         },
