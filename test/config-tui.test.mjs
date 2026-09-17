@@ -3,11 +3,38 @@ import { expect, test } from 'vitest';
 import {
     createInitialTuiDraft,
     getConfigLayoutMode,
+    getBackendWatchWarning,
     getFullChoiceListBudget,
     getNarrowLayoutPlan,
     shouldSpaceChoiceList,
     toLauncherConfig,
 } from '../src/config-tui.mjs';
+
+test('watch-all warning is limited to every available backend running with hot reload', () => {
+    const backendChoices = ['api', 'auth', 'patients'].map((value) => ({ value }));
+    const draft = {
+        stackMode: 'fullstack-local-db',
+        backendModules: ['api', 'auth', 'patients'],
+        visualStudioModules: [],
+        backendWatchModules: ['api', 'auth', 'patients'],
+    };
+
+    expect(getBackendWatchWarning(draft, backendChoices)).toBe(
+        'Watching every backend can exceed constrained DevBox capacity. Prefer artifacts or watch only actively edited modules.',
+    );
+    expect(
+        getBackendWatchWarning(
+            { ...draft, backendModules: ['api', 'patients'], backendWatchModules: ['api', 'patients'] },
+            backendChoices,
+        ),
+    ).toBeNull();
+    expect(
+        getBackendWatchWarning(
+            { ...draft, backendWatchModules: ['api', 'patients'] },
+            backendChoices,
+        ),
+    ).toBeNull();
+});
 
 test('configuration layout uses compact mode for a short standard-width terminal', () => {
     expect(getConfigLayoutMode(116, 17)).toBe('compact');

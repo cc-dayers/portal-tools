@@ -909,9 +909,26 @@ function ChoiceItem({ section, choice, active, compact, width, onPress }) {
     );
 }
 
+export function getBackendWatchWarning(draft, backendChoices) {
+    if (!draft.stackMode?.startsWith('fullstack-')) return null;
+    const available = backendChoices.map((choice) => choice.value);
+    const selected = new Set(draft.backendModules ?? []);
+    const watched = new Set(draft.backendWatchModules ?? []);
+    const visualStudio = new Set(draft.visualStudioModules ?? []);
+    if (
+        available.length === 0 ||
+        !available.every((alias) => selected.has(alias)) ||
+        !available.every((alias) => watched.has(alias) && !visualStudio.has(alias))
+    ) {
+        return null;
+    }
+    return 'Watching every backend can exceed constrained DevBox capacity. Prefer artifacts or watch only actively edited modules.';
+}
+
 function Review({ draft, portalChoices, backendChoices, width = Number.POSITIVE_INFINITY }) {
     const portalNames = labelsFor(draft.portals, portalChoices);
     const backendNames = labelsFor(draft.backendModules, backendChoices);
+    const watchWarning = getBackendWatchWarning(draft, backendChoices);
     const rows = [
         ['Portals', portalNames.join(', ') || 'None'],
         ['Environment', stackModeLabel(draft.stackMode)],
@@ -934,6 +951,13 @@ function Review({ draft, portalChoices, backendChoices, width = Number.POSITIVE_
                 h(Text, { color: 'green' }, truncateText(value, Math.max(8, width - 15))),
             ),
         ),
+        watchWarning
+            ? h(
+                  Box,
+                  { marginTop: 1 },
+                  h(Text, { color: 'yellow', bold: true }, `Warning: ${watchWarning}`),
+              )
+            : null,
     );
 }
 
