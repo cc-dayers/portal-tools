@@ -1143,7 +1143,15 @@ function useTerminalSize() {
     // output.mjs). Debouncing again on top of that just doubles the latency
     // between a real resize and the redraw, for no extra coalescing benefit.
     useEffect(() => {
-        const handleResize = () => setSize(getSize());
+        const handleResize = () => {
+            setSize((current) => {
+                const next = getSize();
+                if (current.width === next.width && current.height === next.height) {
+                    return current;
+                }
+                return next;
+            });
+        };
         stdout.on?.('resize', handleResize);
         return () => {
             stdout.off?.('resize', handleResize);

@@ -1,16 +1,32 @@
 import { EventEmitter } from 'node:events';
 
-export function createThrottledOutput(output, intervalMs = 50, pollIntervalMs = 250) {
+export function createThrottledOutput(output, intervalMs = 25, pollIntervalMs = 50) {
     const resizeEvents = new EventEmitter();
     let resizeTimer = null;
     let disposed = false;
+    let lastColumns = output.columns;
+    let lastRows = output.rows;
+
+    const emitResize = () => {
+        lastColumns = output.columns;
+        lastRows = output.rows;
+        resizeEvents.emit('resize');
+    };
 
     const handleResize = () => {
         if (disposed || resizeTimer) return;
+        const dimensionsKnown = output.columns != null || output.rows != null;
+        if (
+            dimensionsKnown &&
+            output.columns === lastColumns &&
+            output.rows === lastRows
+        ) {
+            return;
+        }
 
         resizeTimer = setTimeout(() => {
             resizeTimer = null;
-            if (!disposed) resizeEvents.emit('resize');
+            if (!disposed) emitResize();
         }, intervalMs);
     };
 
@@ -21,14 +37,11 @@ export function createThrottledOutput(output, intervalMs = 50, pollIntervalMs = 
     // old size until something unrelated happens to trigger a re-render.
     // Poll the reported dimensions as a fallback so a resize is never missed
     // for longer than pollIntervalMs.
-    let lastColumns = output.columns;
-    let lastRows = output.rows;
     const pollTimer = setInterval(() => {
         if (disposed) return;
         if (output.columns !== lastColumns || output.rows !== lastRows) {
-            lastColumns = output.columns;
-            lastRows = output.rows;
-            handleResize();
+            if (resizeTimer) return;
+            emitResize();
         }
     }, pollIntervalMs);
     pollTimer.unref?.();

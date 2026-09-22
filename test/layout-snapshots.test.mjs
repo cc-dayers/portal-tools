@@ -52,7 +52,7 @@ function createSnapshot() {
     };
 }
 
-async function renderConfig(columns, rows) {
+async function renderConfig(columns, rows, inputs = []) {
     const stdin = makeFakeStdin();
     const { stream: stdout, getBuffer, getChunks } = makeFakeStdout(columns, rows);
 
@@ -68,11 +68,31 @@ async function renderConfig(columns, rows) {
     });
 
     await new Promise((resolve) => setTimeout(resolve, 60));
+    for (const input of inputs) {
+        stdin.write(input);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+    }
     stdin.write('q');
     await configPromise;
 
     return { allFrames: cleanFrames(getBuffer()), settled: lastFrame(getChunks()) };
 }
+
+for (const [columns, rows] of [[100, 27], [80, 24], [46, 22]]) {
+    test(`config wizard exposes Back and returns to the first step at ${columns}x${rows}`, async () => {
+        const secondStep = await renderConfig(columns, rows, ['\u001b[C']);
+        expect(secondStep.settled).toContain('← BACK');
+
+        const returnedToFirstStep = await renderConfig(columns, rows, ['\u001b[C', '\u001b[D']);
+        expect(returnedToFirstStep.settled).not.toContain('← BACK');
+    });
+}
+
+test('config wizard keeps Back available on Review alongside Launch', async () => {
+    const review = await renderConfig(100, 27, Array(6).fill('\u001b[C'));
+    expect(review.settled).toContain('← BACK');
+    expect(review.settled).toContain('LAUNCH PORTALS');
+});
 
 async function renderDashboard(columns, rows) {
     const stdin = makeFakeStdin();

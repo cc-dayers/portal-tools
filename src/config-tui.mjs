@@ -20,7 +20,7 @@ const FULL_CHROME_ROWS = 19;
 // Narrow mode's fixed chrome (header, the details panel's top border,
 // section title, the (borderless) next/launch button, footer) — everything
 // except the section menu and the choice list.
-const NARROW_BASE_CHROME_ROWS = 6;
+const NARROW_BASE_CHROME_ROWS = 7;
 const NARROW_MIN_CHOICE_ROWS = 6;
 
 export function getConfigLayoutMode(width, height) {
@@ -322,6 +322,7 @@ function PortalConfigApp({
                       chooseChoice(activeSection, choice);
                   },
                   onNext: () => moveSection(1),
+                  onBack: () => moveSection(-1),
                   onLaunch: launch,
                   onCancel: exit,
               }),
@@ -342,6 +343,7 @@ function ConfigLayout({
     onSelectSection,
     onChoose,
     onNext,
+    onBack,
     onLaunch,
     onCancel,
 }) {
@@ -353,6 +355,8 @@ function ConfigLayout({
         backendChoices,
         onChoose,
         onNext,
+        onBack,
+        canGoBack: sectionIndex > 0,
         nextTitle: sections[sectionIndex + 1]?.title,
         onLaunch,
     };
@@ -408,6 +412,7 @@ function ConfigLayout({
             onSelectSection,
             onChoose,
             onNext,
+            onBack,
             onLaunch,
             onCancel,
         });
@@ -518,6 +523,8 @@ function CompactSectionDetails({
     backendChoices,
     onChoose,
     onNext,
+    onBack,
+    canGoBack,
     nextTitle,
     onLaunch,
     width,
@@ -554,7 +561,15 @@ function CompactSectionDetails({
         ),
         h(
             Box,
-            { justifyContent: 'flex-end' },
+            { justifyContent: canGoBack ? 'space-between' : 'flex-end' },
+            canGoBack
+                ? h(CompactActionButton, {
+                      label: '← BACK',
+                      color: 'gray',
+                      onPress: onBack,
+                      width,
+                  })
+                : null,
             section.id === 'review'
                 ? h(CompactActionButton, { label: '▶ LAUNCH PORTALS', color: 'green', onPress: onLaunch, width })
                 : h(CompactActionButton, {
@@ -624,6 +639,7 @@ function NarrowLayout({
     onSelectSection,
     onChoose,
     onNext,
+    onBack,
     onLaunch,
     onCancel,
 }) {
@@ -658,6 +674,8 @@ function NarrowLayout({
             backendChoices,
             onChoose,
             onNext,
+            onBack,
+            canGoBack: sectionIndex > 0,
             nextTitle: sections[sectionIndex + 1]?.title,
             onLaunch,
             width: terminal.width,
@@ -812,6 +830,8 @@ function SectionDetails({
     backendChoices,
     onChoose,
     onNext,
+    onBack,
+    canGoBack,
     nextTitle,
     onLaunch,
     choiceBudget = Number.POSITIVE_INFINITY,
@@ -847,7 +867,8 @@ function SectionDetails({
         ),
         h(
             Box,
-            { justifyContent: 'flex-end' },
+            { justifyContent: canGoBack ? 'space-between' : 'flex-end' },
+            canGoBack ? h(BackButton, { onPress: onBack }) : null,
             section.id === 'review'
                 ? h(LaunchButton, { onPress: onLaunch })
                 : h(NextButton, { nextTitle, onPress: onNext }),
@@ -967,6 +988,15 @@ function NextButton({ nextTitle, onPress }) {
         Box,
         { ref, borderStyle: 'round', borderColor: 'cyan', paddingX: 2, flexShrink: 0 },
         h(Text, { bold: true, color: 'cyan' }, `NEXT: ${nextTitle} →`),
+    );
+}
+
+function BackButton({ onPress }) {
+    const ref = useClickable(onPress);
+    return h(
+        Box,
+        { ref, borderStyle: 'round', borderColor: 'gray', paddingX: 2, flexShrink: 0 },
+        h(Text, { bold: true, color: 'gray' }, '← BACK'),
     );
 }
 
@@ -1186,18 +1216,22 @@ function useTerminalSize() {
     );
     const [size, setSize] = useState(getSize);
 
+    // stdout here is createThrottledOutput's facade, which already coalesces
+    // native resize storms into one 'resize' emission per interval (see
+    // output.mjs). Debouncing again on top of that just doubles the latency
+    // between a real resize and the redraw, for no extra coalescing benefit.
     useEffect(() => {
-        let resizeTimer = null;
         const handleResize = () => {
-            if (resizeTimer) return;
-            resizeTimer = setTimeout(() => {
-                resizeTimer = null;
-                setSize(getSize());
-            }, 50);
+            setSize((current) => {
+                const next = getSize();
+                if (current.width === next.width && current.height === next.height) {
+                    return current;
+                }
+                return next;
+            });
         };
         stdout.on?.('resize', handleResize);
         return () => {
-            clearTimeout(resizeTimer);
             stdout.off?.('resize', handleResize);
         };
     }, [getSize, stdout]);
