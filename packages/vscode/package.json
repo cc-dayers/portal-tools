@@ -1,0 +1,275 @@
+{
+    "name": "cc-portal-launcher-vscode",
+    "displayName": "CareContinuity Portal Launcher (Experimental)",
+    "description": "VS Code dashboard for the CareContinuity portal launcher.",
+    "version": "0.0.1",
+    "private": true,
+    "publisher": "cc-dayers",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/cc-dayers/portal-tools.git",
+        "directory": "packages/vscode"
+    },
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "extensionKind": [
+        "workspace"
+    ],
+    "capabilities": {
+        "untrustedWorkspaces": {
+            "supported": false,
+            "description": "Launching portals executes scripts and processes from the current workspace."
+        }
+    },
+    "activationEvents": [],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "ccPortalLauncher.launchSaved",
+                "title": "Launch Saved Configuration",
+                "category": "Portal Launcher",
+                "icon": "$(play)"
+            },
+            {
+                "command": "ccPortalLauncher.configure",
+                "title": "Configure New Launch",
+                "category": "Portal Launcher",
+                "icon": "$(settings-gear)"
+            },
+            {
+                "command": "ccPortalLauncher.savePreset",
+                "title": "Save Session as Preset",
+                "category": "Portal Launcher",
+                "icon": "$(save)"
+            },
+            {
+                "command": "ccPortalLauncher.addBackend",
+                "title": "Add Backend Module",
+                "category": "Portal Launcher",
+                "icon": "$(add)"
+            },
+            {
+                "command": "ccPortalLauncher.restartAll",
+                "title": "Restart All",
+                "category": "Portal Launcher",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "ccPortalLauncher.stopAll",
+                "title": "Stop All",
+                "category": "Portal Launcher",
+                "icon": "$(debug-stop)"
+            },
+            {
+                "command": "ccPortalLauncher.showLogs",
+                "title": "Show Launcher Logs",
+                "category": "Portal Launcher",
+                "icon": "$(output)"
+            },
+            {
+                "command": "ccPortalLauncher.preset.launch",
+                "title": "Launch",
+                "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.preset.edit",
+                "title": "Edit and Launch…",
+                "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.preset.rename",
+                "title": "Rename…",
+                "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.preset.delete",
+                "title": "Delete",
+                "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.target.open",
+                "title": "Open in Browser",
+                "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.target.start",
+                "title": "Start",
+                "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.target.restart",
+                "title": "Restart",
+                "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.target.stop",
+                "title": "Stop",
+                "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.target.logs",
+                "title": "Show Logs",
+                "category": "Portal Launcher"
+            }
+        ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "ccPortalLauncher",
+                    "title": "Portal Launcher",
+                    "icon": "resources/portal-launcher.svg"
+                }
+            ]
+        },
+        "views": {
+            "ccPortalLauncher": [
+                {
+                    "type": "webview",
+                    "id": "ccPortalLauncher.dashboard",
+                    "name": "Dashboard"
+                }
+            ]
+        },
+        "menus": {
+            "view/title": [
+                {
+                    "command": "ccPortalLauncher.configure",
+                    "when": "view == ccPortalLauncher.dashboard && ccPortalLauncher.session == idle",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "ccPortalLauncher.savePreset",
+                    "when": "view == ccPortalLauncher.dashboard && ccPortalLauncher.session == running",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "ccPortalLauncher.showLogs",
+                    "when": "view == ccPortalLauncher.dashboard",
+                    "group": "navigation@2"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "ccPortalLauncher.savePreset",
+                    "when": "ccPortalLauncher.session == running"
+                },
+                {
+                    "command": "ccPortalLauncher.addBackend",
+                    "when": "ccPortalLauncher.session == running"
+                },
+                {
+                    "command": "ccPortalLauncher.restartAll",
+                    "when": "ccPortalLauncher.session == running"
+                },
+                {
+                    "command": "ccPortalLauncher.stopAll",
+                    "when": "ccPortalLauncher.session == running"
+                },
+                {
+                    "command": "ccPortalLauncher.preset.launch",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.preset.edit",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.preset.rename",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.preset.delete",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.target.open",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.target.start",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.target.restart",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.target.stop",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.target.logs",
+                    "when": "false"
+                }
+            ],
+            "webview/context": [
+                {
+                    "command": "ccPortalLauncher.preset.launch",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'preset'",
+                    "group": "1_preset@1"
+                },
+                {
+                    "command": "ccPortalLauncher.preset.edit",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'preset'",
+                    "group": "1_preset@2"
+                },
+                {
+                    "command": "ccPortalLauncher.preset.rename",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'preset' && !ccBuiltIn",
+                    "group": "1_preset@3"
+                },
+                {
+                    "command": "ccPortalLauncher.preset.delete",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'preset' && !ccBuiltIn",
+                    "group": "9_danger@1"
+                },
+                {
+                    "command": "ccPortalLauncher.target.open",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'target' && ccActions =~ /\bopen\b/",
+                    "group": "1_target@1"
+                },
+                {
+                    "command": "ccPortalLauncher.target.start",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'target' && ccActions =~ /\bstart\b/",
+                    "group": "1_target@2"
+                },
+                {
+                    "command": "ccPortalLauncher.target.restart",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'target' && ccActions =~ /\brestart\b/",
+                    "group": "1_target@3"
+                },
+                {
+                    "command": "ccPortalLauncher.target.stop",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'target' && ccActions =~ /\bstop\b/",
+                    "group": "1_target@4"
+                },
+                {
+                    "command": "ccPortalLauncher.target.logs",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'target' && ccActions =~ /\blogs\b/",
+                    "group": "2_logs@1"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "build": "node esbuild.mjs",
+        "check": "node --check src/extension.mjs && node --check src/launcher-model.mjs && node --check resources/webview/dashboard.js && node --check esbuild.mjs",
+        "vscode:prepublish": "node esbuild.mjs --production",
+        "package": "vsce package --no-dependencies --skip-license",
+        "test:integration": "node esbuild.mjs && vscode-test"
+    },
+    "devDependencies": {
+        "@cc-dayers/portal-protocol": "workspace:*",
+        "@vscode/codicons": "0.0.46-24",
+        "@vscode/test-cli": "^0.0.15",
+        "@vscode/test-electron": "^3.1.0",
+        "@vscode/vsce": "^4.0.0",
+        "esbuild": "^0.28.2",
+        "mocha": "^12.0.2"
+    }
+}

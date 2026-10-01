@@ -1,0 +1,5 @@
+**
+!package.json
+!dist/**
+!resources/portal-launcher.svg
+dist/**/*.map

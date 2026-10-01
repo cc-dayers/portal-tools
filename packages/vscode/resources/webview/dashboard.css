@@ -1,0 +1,407 @@
+:root {
+    --ok: var(--vscode-testing-iconPassed, #3fb950);
+    --bad: var(--vscode-testing-iconFailed, #f14c4c);
+    --run: var(--vscode-progressBar-background, #0078d4);
+    --warn: var(--vscode-editorWarning-foreground, #cca700);
+    --idle: var(--vscode-disabledForeground, #8b8f96);
+    --muted: var(--vscode-descriptionForeground);
+    --border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+    --surface: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+    --hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 4px 12px 16px;
+    color: var(--vscode-foreground);
+    background: var(--vscode-sideBar-background);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    line-height: 1.4;
+    container-type: inline-size;
+}
+
+#app {
+    display: grid;
+    gap: 14px;
+}
+
+.section {
+    display: grid;
+    gap: 6px;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.section-head .count {
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+}
+
+.cards {
+    display: grid;
+    gap: 6px;
+}
+
+@container (min-width: 420px) {
+    .cards {
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        align-items: start;
+    }
+}
+
+.panel,
+.card,
+.preset {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+}
+
+.panel {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+}
+
+.panel-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.panel-name {
+    font-weight: 600;
+}
+
+.meta {
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.segbar {
+    display: flex;
+    gap: 2px;
+    height: 4px;
+}
+
+.segbar i {
+    flex: 1;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--idle) 35%, transparent);
+}
+
+.segbar i[data-s='ready'] { background: var(--ok); }
+.segbar i[data-s='starting'],
+.segbar i[data-s='restarting'] { background: var(--run); }
+.segbar i[data-s='rebuilding'] { background: var(--warn); }
+.segbar i[data-s='failed'] { background: var(--bad); }
+
+.row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+button {
+    font: inherit;
+    color: inherit;
+}
+
+.btn {
+    border: 0;
+    border-radius: 2px;
+    padding: 3px 10px;
+    font-size: 12px;
+    line-height: 18px;
+    cursor: pointer;
+    color: var(--vscode-button-secondaryForeground);
+    background: var(--vscode-button-secondaryBackground);
+}
+
+.btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.btn.primary {
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+}
+
+.btn.primary:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.ibtn {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: none;
+    cursor: pointer;
+}
+
+.ibtn:hover {
+    background: var(--hover);
+}
+
+.ibtn .codicon {
+    font-size: 16px;
+}
+
+button:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+.card {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 2px 10px;
+    align-items: center;
+    padding: 8px 10px;
+    overflow: hidden;
+}
+
+.dot {
+    grid-row: 1 / 3;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--idle);
+}
+
+.name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.port {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.sub {
+    grid-column: 2;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.acts {
+    grid-row: 1 / 3;
+    grid-column: 3;
+    display: flex;
+    gap: 2px;
+}
+
+.tag {
+    padding: 0 5px;
+    border-radius: 3px;
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 16px;
+    color: var(--warn);
+    background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+
+.tag.muted {
+    color: var(--muted);
+    background: color-mix(in srgb, var(--idle) 18%, transparent);
+}
+
+.fail {
+    grid-column: 2 / 4;
+    margin-top: 4px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11.5px;
+    color: var(--bad);
+    background: color-mix(in srgb, var(--bad) 12%, transparent);
+    overflow-wrap: anywhere;
+}
+
+.bar {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: none;
+    height: 2px;
+    overflow: hidden;
+}
+
+.bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 35%;
+    background: var(--run);
+    animation: slide 1.3s ease-in-out infinite;
+}
+
+.card[data-s='ready'] .dot { background: var(--ok); }
+.card[data-s='failed'] { border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); }
+.card[data-s='failed'] .dot { background: var(--bad); }
+.card[data-s='stopped'] .dot { background: transparent; border: 1.5px solid var(--idle); }
+.card[data-s='stopped'] .name { color: var(--muted); }
+.card[data-s='stopping'] .dot { animation: pulse 1s ease-in-out infinite; }
+
+.card[data-s='starting'] .dot,
+.card[data-s='restarting'] .dot,
+.card[data-s='rebuilding'] .dot {
+    background: transparent;
+    border: 2px solid var(--run);
+    border-right-color: transparent;
+    animation: spin 0.8s linear infinite;
+}
+
+.card[data-s='rebuilding'] .dot { border-color: var(--warn); border-right-color: transparent; }
+.card[data-s='rebuilding'] .bar::after { background: var(--warn); }
+.card[data-s='starting'] .bar,
+.card[data-s='restarting'] .bar,
+.card[data-s='rebuilding'] .bar,
+.panel .bar { display: block; }
+
+.panel.busy {
+    position: relative;
+    overflow: hidden;
+}
+
+.add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 7px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: var(--muted);
+    background: transparent;
+    cursor: pointer;
+}
+
+.add:hover:not(:disabled) {
+    color: var(--vscode-foreground);
+    border-color: var(--muted);
+}
+
+.add:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.add .codicon {
+    font-size: 14px;
+}
+
+.preset {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 10px;
+    align-items: center;
+    padding: 8px 10px;
+}
+
+.preset.default {
+    border-color: color-mix(in srgb, var(--vscode-button-background) 55%, var(--border));
+}
+
+.preset .p-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.preset .sub {
+    grid-column: 1;
+}
+
+.preset .acts {
+    grid-row: 1 / 3;
+    grid-column: 2;
+    align-items: center;
+    gap: 4px;
+}
+
+.empty {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.error {
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--vscode-inputValidation-errorBorder, var(--bad));
+    background: var(--vscode-inputValidation-errorBackground, color-mix(in srgb, var(--bad) 12%, transparent));
+    overflow-wrap: anywhere;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+@media (prefers-reduced-motion: reduce) {
+    .dot { animation: none !important; }
+    .bar::after { width: 100%; opacity: 0.6; animation: none; }
+}
+
+body.vscode-reduce-motion .dot { animation: none !important; }
+body.vscode-reduce-motion .bar::after { width: 100%; opacity: 0.6; animation: none; }
+
+/* High contrast themes drop translucent fills, so structure comes from contrast borders instead. */
+body.vscode-high-contrast .panel,
+body.vscode-high-contrast .card,
+body.vscode-high-contrast .preset,
+body.vscode-high-contrast .add {
+    border-color: var(--vscode-contrastBorder);
+    background: transparent;
+}
+
+body.vscode-high-contrast .btn,
+body.vscode-high-contrast .ibtn {
+    border: 1px solid var(--vscode-contrastBorder);
+}
+
+body.vscode-high-contrast .ibtn:hover,
+body.vscode-high-contrast .btn:hover {
+    outline: 1px dashed var(--vscode-contrastActiveBorder);
+}

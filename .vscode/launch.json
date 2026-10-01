@@ -1,0 +1,36 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Portal Launcher extension (real launcher)",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--disable-extensions",
+                "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode",
+                "${workspaceFolder}/../carecontinuity.app"
+            ],
+            "preLaunchTask": "build vscode extension",
+            "outFiles": [
+                "${workspaceFolder}/packages/vscode/dist/**/*.js"
+            ]
+        },
+        {
+            "name": "Portal Launcher extension (mock host)",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--disable-extensions",
+                "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode",
+                "${workspaceFolder}/../carecontinuity.app"
+            ],
+            "env": {
+                "CC_PORTAL_LAUNCHER_HOST": "${workspaceFolder}/packages/protocol/src/mock-launcher-host.mjs"
+            },
+            "preLaunchTask": "build vscode extension",
+            "outFiles": [
+                "${workspaceFolder}/packages/vscode/dist/**/*.js"
+            ]
+        }
+    ]
+}
