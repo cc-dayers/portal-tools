@@ -8,6 +8,34 @@ import {
     createProtocolClient,
 } from '../src/protocol-client.mjs';
 
+test('protocol client sends the configured client identity during the handshake', async () => {
+    const hostOutput = new PassThrough();
+    const hostInput = new PassThrough();
+    const requests = collectJson(hostInput);
+    const client = createProtocolClient({
+        input: hostOutput,
+        output: hostInput,
+        clientInfo: { name: 'cc-portals-vscode', version: '0.0.1' },
+    });
+
+    hostOutput.write(serverMessage('server.hello', 1, { supportedVersions: [1] }));
+    const connectPromise = client.connect();
+    await waitFor(() => requests.length === 1);
+
+    expect(requests[0]).toMatchObject({
+        type: 'client.hello',
+        payload: {
+            selectedVersion: 1,
+            client: { name: 'cc-portals-vscode', version: '0.0.1' },
+        },
+    });
+
+    hostOutput.write(serverMessage('response.ok', 2, {}, requests[0].requestId));
+    hostOutput.write(serverMessage('event.session-ready', 3, { configurationRequired: false }));
+    await connectPromise;
+    client.close();
+});
+
 test('protocol client handshakes and exposes session metadata', async () => {
     const hostOutput = new PassThrough();
     const hostInput = new PassThrough();

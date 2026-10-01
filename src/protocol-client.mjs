@@ -7,8 +7,15 @@ const MAX_LINE_CHARS = 1_048_576;
 const MAX_BUFFERED_LOGS = 500;
 const REQUEST_TIMEOUT_MS = 10_000;
 
-export async function connectToLauncherHost({ hostPath, hostArgs = [], cwd, env = process.env }) {
-    const child = spawn(process.execPath, [hostPath, ...hostArgs], {
+export async function connectToLauncherHost({
+    hostPath,
+    hostArgs = [],
+    cwd,
+    env = process.env,
+    runtimePath = process.execPath,
+    clientInfo,
+}) {
+    const child = spawn(runtimePath, [hostPath, ...hostArgs], {
         cwd,
         env,
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -18,6 +25,7 @@ export async function connectToLauncherHost({ hostPath, hostArgs = [], cwd, env 
         input: child.stdout,
         output: child.stdin,
         errorInput: child.stderr,
+        clientInfo,
         onClose() {
             if (!child.killed) child.kill();
         },
@@ -29,7 +37,13 @@ export async function connectToLauncherHost({ hostPath, hostArgs = [], cwd, env 
     return client;
 }
 
-export function createProtocolClient({ input, output, errorInput, onClose = () => {} }) {
+export function createProtocolClient({
+    input,
+    output,
+    errorInput,
+    onClose = () => {},
+    clientInfo = { name: 'cc-portals-tui', version: '0.1.13' },
+}) {
     const events = new EventEmitter();
     const pending = new Map();
     const bufferedLogs = [];
@@ -202,7 +216,7 @@ export function createProtocolClient({ input, output, errorInput, onClose = () =
             }
             await send('client.hello', {
                 selectedVersion: PROTOCOL_VERSION,
-                client: { name: 'cc-portals-tui', version: '0.1.12' },
+                client: clientInfo,
             });
             return withTimeout(sessionPromise, REQUEST_TIMEOUT_MS, 'launcher session');
         },
