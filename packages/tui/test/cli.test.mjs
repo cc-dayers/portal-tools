@@ -1,7 +1,10 @@
 import { expect, test } from 'vitest';
 
+import path from 'node:path';
+
 import {
     createPerformanceTerminal,
+    findLauncherHost,
     isReadySnapshot,
     parseCliArgs,
     toLauncherSelection,
@@ -25,6 +28,24 @@ test('parseCliArgs separates the host script from forwarded launcher flags', () 
         hostPath: 'C:/repo/Portals/scripts/portal-launcher-host.mjs',
         hostArgs: ['--config', '--verbose'],
     });
+});
+
+test('parseCliArgs forwards launcher flags given without a separator', () => {
+    expect(parseCliArgs(['--config', '--verbose'])).toMatchObject({
+        hostPath: '',
+        hostArgs: ['--config', '--verbose'],
+    });
+    expect(parseCliArgs(['--config', '--', '--debug']).hostArgs).toEqual(['--config', '--debug']);
+});
+
+test('findLauncherHost walks up from the working directory to the Portals launcher host', () => {
+    const repo = path.resolve('/work/carecontinuity.app');
+    const host = path.join(repo, 'Portals', 'scripts', 'portal-launcher-host.mjs');
+    const exists = (candidate) => candidate === host;
+
+    expect(findLauncherHost(path.join(repo, 'Portals', 'sso', 'src'), exists)).toBe(host);
+    expect(findLauncherHost(repo, exists)).toBe(host);
+    expect(findLauncherHost(path.resolve('/elsewhere/project'), exists)).toBe('');
 });
 
 test('parseCliArgs accepts the internal performance steady-state duration', () => {

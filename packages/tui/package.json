@@ -1,6 +1,6 @@
 {
-    "name": "@cc-dayers/portal-tools",
-    "version": "0.1.13",
+    "name": "@cc-dayers/portal-tui",
+    "version": "0.2.0",
     "description": "Terminal UI for the CareContinuity Portals launcher",
     "type": "module",
     "repository": {

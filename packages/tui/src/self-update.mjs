@@ -1,10 +1,15 @@
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 
-export const RELEASE_API_URL = 'https://api.github.com/repos/cc-dayers/portal-tools/releases/latest';
-export const INSTALL_TARBALL_URL =
-    'https://github.com/cc-dayers/portal-tools/releases/latest/download/cc-dayers-portal-tools.tgz';
-const PACKAGE_NAME = '@cc-dayers/portal-tools';
+// The repository releases several tools, so "latest" is resolved from tui-v* tags rather than GitHub's latest release.
+export const RELEASES_API_URL = 'https://api.github.com/repos/cc-dayers/portal-tools/releases?per_page=50';
+const RELEASE_TAG_PREFIX = 'tui-v';
+const TARBALL_NAME = 'cc-dayers-portal-tui.tgz';
+const PACKAGE_NAME = '@cc-dayers/portal-tui';
+
+export function releaseTarballUrl(version) {
+    return `https://github.com/cc-dayers/portal-tools/releases/download/${RELEASE_TAG_PREFIX}${version}/${TARBALL_NAME}`;
+}
 
 /**
  * Compares two `x.y.z` version strings. Returns -1, 0, or 1, the same
@@ -23,16 +28,20 @@ export function compareVersions(a, b) {
 }
 
 export async function fetchLatestVersion({ fetchImpl = fetch } = {}) {
-    const response = await fetchImpl(RELEASE_API_URL, {
+    const response = await fetchImpl(RELEASES_API_URL, {
         headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'cc-portals-tui' },
     });
     if (!response.ok) {
         throw new Error(`GitHub API responded with ${response.status}`);
     }
-    const data = await response.json();
-    const tag = String(data?.tag_name ?? '').trim();
-    if (!tag) throw new Error('release response is missing a tag_name');
-    return tag.replace(/^v/i, '');
+    const releases = await response.json();
+    const versions = (Array.isArray(releases) ? releases : [])
+        .filter((release) => !release?.draft && !release?.prerelease)
+        .map((release) => String(release?.tag_name ?? '').trim())
+        .filter((tag) => tag.startsWith(RELEASE_TAG_PREFIX))
+        .map((tag) => tag.slice(RELEASE_TAG_PREFIX.length));
+    if (versions.length === 0) throw new Error(`no published ${RELEASE_TAG_PREFIX}* release was found`);
+    return versions.sort(compareVersions).at(-1);
 }
 
 export async function checkForUpdate({ currentVersion, fetchImpl } = {}) {
@@ -50,10 +59,10 @@ export async function checkForUpdate({ currentVersion, fetchImpl } = {}) {
  * package (a known source of "uninstall then reinstall" friction on
  * Windows), falls back to an explicit uninstall before retrying once.
  */
-export function installLatestRelease({ env = process.env, cwd = process.cwd(), spawn = spawnSync } = {}) {
+export function installLatestRelease({ version, env = process.env, cwd = process.cwd(), spawn = spawnSync } = {}) {
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const spawnOptions = { cwd, env, stdio: 'inherit', windowsHide: false, shell: process.platform === 'win32' };
-    const install = () => spawn(npmCommand, ['install', '--global', INSTALL_TARBALL_URL, '--force'], spawnOptions);
+    const install = () => spawn(npmCommand, ['install', '--global', releaseTarballUrl(version), '--force'], spawnOptions);
 
     let result = install();
     if (result.error || result.status !== 0) {
@@ -95,7 +104,7 @@ export async function runSelfUpdate({
     }
 
     log(`Updating ${currentVersion} -> ${update.latestVersion}...`);
-    const installation = installLatestRelease({ env, cwd, spawn });
+    const installation = installLatestRelease({ version: update.latestVersion, env, cwd, spawn });
     if (!installation.installed) {
         return { success: false, message: installation.message };
     }

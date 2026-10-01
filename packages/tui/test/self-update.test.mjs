@@ -4,16 +4,41 @@ import {
     checkForUpdate,
     compareVersions,
     installLatestRelease,
+    releaseTarballUrl,
     runSelfUpdate,
 } from '../src/self-update.mjs';
 
+// The repository also publishes vscode-v* releases, so the TUI must ignore them.
 function fakeFetch(tagName, ok = true, status = 200) {
     return vi.fn().mockResolvedValue({
         ok,
         status,
-        json: async () => ({ tag_name: tagName }),
+        json: async () => [
+            { tag_name: 'vscode-v9.9.9', draft: false, prerelease: false },
+            { tag_name: 'tui-v9.0.0', draft: true, prerelease: false },
+            { tag_name: 'tui-v8.0.0', draft: false, prerelease: true },
+            { tag_name: tagName, draft: false, prerelease: false },
+            { tag_name: 'tui-v0.0.1', draft: false, prerelease: false },
+        ],
     });
 }
+
+test('releaseTarballUrl points at the tagged TUI asset', () => {
+    expect(releaseTarballUrl('0.2.0')).toBe(
+        'https://github.com/cc-dayers/portal-tools/releases/download/tui-v0.2.0/cc-dayers-portal-tui.tgz',
+    );
+});
+
+test('checkForUpdate fails clearly when no published TUI release exists', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => [{ tag_name: 'vscode-v0.1.0', draft: false, prerelease: false }],
+    });
+    await expect(checkForUpdate({ currentVersion: '0.2.0', fetchImpl })).rejects.toThrow(
+        'no published tui-v* release was found',
+    );
+});
 
 test('compareVersions orders by numeric segments, not lexically', () => {
     expect(compareVersions('0.1.4', '0.1.5')).toBe(-1);
@@ -25,29 +50,29 @@ test('compareVersions orders by numeric segments, not lexically', () => {
 
 test('checkForUpdate reports whether a newer release exists', async () => {
     await expect(
-        checkForUpdate({ currentVersion: '0.1.4', fetchImpl: fakeFetch('v0.1.5') }),
+        checkForUpdate({ currentVersion: '0.1.4', fetchImpl: fakeFetch('tui-v0.1.5') }),
     ).resolves.toEqual({ currentVersion: '0.1.4', latestVersion: '0.1.5', updateAvailable: true });
 
     await expect(
-        checkForUpdate({ currentVersion: '0.1.5', fetchImpl: fakeFetch('v0.1.5') }),
+        checkForUpdate({ currentVersion: '0.1.5', fetchImpl: fakeFetch('tui-v0.1.5') }),
     ).resolves.toEqual({ currentVersion: '0.1.5', latestVersion: '0.1.5', updateAvailable: false });
 });
 
 test('checkForUpdate surfaces GitHub API failures', async () => {
     await expect(
-        checkForUpdate({ currentVersion: '0.1.4', fetchImpl: fakeFetch('v0.1.5', false, 503) }),
+        checkForUpdate({ currentVersion: '0.1.4', fetchImpl: fakeFetch('tui-v0.1.5', false, 503) }),
     ).rejects.toThrow('GitHub API responded with 503');
 });
 
 test('installLatestRelease reinstalls with --force in one call when it succeeds', () => {
     const spawn = vi.fn().mockReturnValue({ status: 0 });
 
-    expect(installLatestRelease({ spawn })).toEqual({ installed: true });
+    expect(installLatestRelease({ version: '0.2.0', spawn })).toEqual({ installed: true });
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(spawn.mock.calls[0][1]).toEqual([
         'install',
         '--global',
-        'https://github.com/cc-dayers/portal-tools/releases/latest/download/cc-dayers-portal-tools.tgz',
+        'https://github.com/cc-dayers/portal-tools/releases/download/tui-v0.2.0/cc-dayers-portal-tui.tgz',
         '--force',
     ]);
 });
@@ -59,15 +84,15 @@ test('installLatestRelease falls back to uninstall-then-reinstall when the force
         .mockReturnValueOnce({ status: 0 })
         .mockReturnValueOnce({ status: 0 });
 
-    expect(installLatestRelease({ spawn })).toEqual({ installed: true });
+    expect(installLatestRelease({ version: '0.2.0', spawn })).toEqual({ installed: true });
     expect(spawn).toHaveBeenCalledTimes(3);
-    expect(spawn.mock.calls[1][1]).toEqual(['uninstall', '--global', '@cc-dayers/portal-tools']);
+    expect(spawn.mock.calls[1][1]).toEqual(['uninstall', '--global', '@cc-dayers/portal-tui']);
 });
 
 test('installLatestRelease reports failure when the fallback also fails', () => {
     const spawn = vi.fn().mockReturnValue({ status: 1 });
 
-    expect(installLatestRelease({ spawn })).toEqual({
+    expect(installLatestRelease({ version: '0.2.0', spawn })).toEqual({
         installed: false,
         message: 'npm install exited with code 1',
     });
@@ -79,7 +104,7 @@ test('runSelfUpdate skips installing when already current', async () => {
 
     const result = await runSelfUpdate({
         currentVersion: '0.1.5',
-        fetchImpl: fakeFetch('v0.1.5'),
+        fetchImpl: fakeFetch('tui-v0.1.5'),
         spawn,
         log,
     });
@@ -100,7 +125,7 @@ test('runSelfUpdate installs the newer release when one is available', async () 
 
     const result = await runSelfUpdate({
         currentVersion: '0.1.4',
-        fetchImpl: fakeFetch('v0.1.5'),
+        fetchImpl: fakeFetch('tui-v0.1.5'),
         spawn,
         log,
     });
@@ -130,7 +155,7 @@ test('runSelfUpdate reports a friendly message when the version check fails', as
 test('runSelfUpdate reports installation failures', async () => {
     const result = await runSelfUpdate({
         currentVersion: '0.1.4',
-        fetchImpl: fakeFetch('v0.1.5'),
+        fetchImpl: fakeFetch('tui-v0.1.5'),
         spawn: vi.fn().mockReturnValue({ status: 1 }),
         log: () => {},
     });

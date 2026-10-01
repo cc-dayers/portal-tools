@@ -163,7 +163,7 @@ export function createMockLauncherHost({
                 id,
                 label: meta.label,
                 color: meta.color,
-                kind: 'portal',
+                kind: 'frontend',
                 url: `http://localhost:${3000 + portalIds.indexOf(id)}`,
                 openable: true,
                 status: 'starting',

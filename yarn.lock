@@ -21,9 +21,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@cc-dayers/portal-tools@workspace:packages/tui":
+"@cc-dayers/portal-tui@workspace:packages/tui":
   version: 0.0.0-use.local
-  resolution: "@cc-dayers/portal-tools@workspace:packages/tui"
+  resolution: "@cc-dayers/portal-tui@workspace:packages/tui"
   dependencies:
     "@cc-dayers/portal-protocol": "workspace:*"
     "@types/react": "npm:^19.2.0"

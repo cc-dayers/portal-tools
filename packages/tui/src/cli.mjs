@@ -2,6 +2,7 @@
 
 import process from 'node:process';
 import fs from 'node:fs';
+import path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 
 import { runPortalConfigTui } from './config-tui.mjs';
@@ -10,8 +11,13 @@ import { PROTOCOL, PROTOCOL_VERSION, connectToLauncherHost } from '@cc-dayers/po
 
 import { createDashboardLauncherAdapter } from './dashboard-adapter.mjs';
 import { runSelfUpdate } from './self-update.mjs';
+import packageJson from '../package.json' with { type: 'json' };
 
-const PACKAGE_VERSION = '0.1.13';
+const PACKAGE_VERSION = packageJson.version;
+const CLIENT_NAME = 'cc-portals-tui';
+const HOST_RELATIVE_PATH = path.join('Portals', 'scripts', 'portal-launcher-host.mjs');
+// Launcher flags the host understands; they may be given directly instead of after `--`.
+const HOST_FLAGS = new Set(['--config', '--reset', '--setup', '-c', '--verbose', '-v', '--debug']);
 
 export function parseCliArgs(args) {
     const hostIndex = args.indexOf('--host');
@@ -30,8 +36,22 @@ export function parseCliArgs(args) {
         update: args.includes('--update'),
         performanceSteadyMs: performanceValue,
         hostPath: hostIndex >= 0 ? args[hostIndex + 1] ?? '' : '',
-        hostArgs: separatorIndex >= 0 ? args.slice(separatorIndex + 1) : [],
+        hostArgs: [
+            ...(separatorIndex >= 0 ? args.slice(0, separatorIndex) : args).filter((arg) => HOST_FLAGS.has(arg)),
+            ...(separatorIndex >= 0 ? args.slice(separatorIndex + 1) : []),
+        ],
     };
+}
+
+export function findLauncherHost(startDirectory = process.cwd(), exists = fs.existsSync) {
+    let directory = path.resolve(startDirectory);
+    while (true) {
+        const candidate = path.join(directory, HOST_RELATIVE_PATH);
+        if (exists(candidate)) return candidate;
+        const parent = path.dirname(directory);
+        if (parent === directory) return '';
+        directory = parent;
+    }
 }
 
 export function isReadySnapshot(snapshot) {
@@ -75,8 +95,9 @@ export async function run(args = process.argv.slice(2)) {
     const parsed = parseCliArgs(args);
     if (parsed.help) {
         process.stdout.write(
-            'Usage: cc-portals-tui --host <portal-launcher-host.mjs> -- [launcher flags]\n' +
-                '       cc-portals-tui --update\n',
+            'Usage: cc-portals-tui [--config] [--verbose] [--host <portal-launcher-host.mjs>] [-- launcher flags]\n' +
+                '       cc-portals-tui --update\n\n' +
+                'Run inside a carecontinuity.app checkout; the launcher host is found automatically.\n',
         );
         return 0;
     }
@@ -94,7 +115,7 @@ export async function run(args = process.argv.slice(2)) {
     if (parsed.protocolInfo) {
         process.stdout.write(
             `${JSON.stringify({
-                name: 'cc-portals-tui',
+                name: CLIENT_NAME,
                 version: PACKAGE_VERSION,
                 protocol: PROTOCOL,
                 supportedVersions: [PROTOCOL_VERSION],
@@ -104,8 +125,11 @@ export async function run(args = process.argv.slice(2)) {
         return 0;
     }
 
-    if (!parsed.hostPath) {
-        process.stderr.write('Missing required --host <portal-launcher-host.mjs>.\n');
+    const hostPath = parsed.hostPath ? path.resolve(parsed.hostPath) : findLauncherHost();
+    if (!hostPath) {
+        process.stderr.write(
+            `Could not find ${HOST_RELATIVE_PATH}. Run cc-portals-tui inside a carecontinuity.app checkout, or pass --host <path>.\n`,
+        );
         return 2;
     }
     if (
@@ -128,9 +152,11 @@ export async function run(args = process.argv.slice(2)) {
 
     try {
         client = await connectToLauncherHost({
-            hostPath: parsed.hostPath,
+            hostPath,
             hostArgs: parsed.hostArgs,
-            cwd: process.env.PORTALS_ROOT || process.cwd(),
+            // The host lives in Portals/scripts and expects to run from the Portals workspace.
+            cwd: process.env.PORTALS_ROOT || path.dirname(path.dirname(hostPath)),
+            clientInfo: { name: CLIENT_NAME, version: PACKAGE_VERSION },
         });
         const session = client.session;
         let launchPayload = { source: 'saved' };
