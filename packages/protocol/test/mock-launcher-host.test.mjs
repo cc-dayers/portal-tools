@@ -4,7 +4,7 @@ import { expect, test } from 'vitest';
 
 import { createProtocolClient } from '../src/protocol-client.mjs';
 
-const HOST_SCRIPT = fileURLToPath(new URL('../dev/mock-launcher-host.mjs', import.meta.url));
+const HOST_SCRIPT = fileURLToPath(new URL('../src/mock-launcher-host.mjs', import.meta.url));
 
 function spawnMockHost(args = [], env = {}) {
     return spawn(process.execPath, [HOST_SCRIPT, ...args], {

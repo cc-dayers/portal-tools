@@ -1,0 +1,17 @@
+{
+    "name": "@cc-dayers/portal-protocol",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Client and mock host for the cc.portals.launcher.v1 protocol",
+    "type": "module",
+    "exports": {
+        ".": "./src/protocol-client.mjs",
+        "./mock-host": "./src/mock-launcher-host.mjs"
+    },
+    "scripts": {
+        "check": "node --check src/protocol-client.mjs && node --check src/mock-launcher-host.mjs"
+    },
+    "engines": {
+        "node": ">=22"
+    }
+}

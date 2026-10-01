@@ -1,0 +1,38 @@
+{
+    "name": "@cc-dayers/portal-tools",
+    "version": "0.1.13",
+    "description": "Terminal UI for the CareContinuity Portals launcher",
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/cc-dayers/portal-tools.git",
+        "directory": "packages/tui"
+    },
+    "bin": {
+        "cc-portals-tui": "dist/bin.mjs"
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "node build.mjs",
+        "prepack": "node build.mjs",
+        "check": "node --check src/bin.mjs && node --check src/cli.mjs && node --check src/config-tui.mjs && node --check src/dashboard-tui.mjs && node --check src/dashboard-adapter.mjs && node --check src/self-update.mjs && node --check dev/render-frame.mjs && node --check dev/visualize.mjs && node --check build.mjs",
+        "start": "node src/bin.mjs",
+        "dev": "node src/bin.mjs --host ../protocol/src/mock-launcher-host.mjs -- --config",
+        "dev:quick": "node src/bin.mjs --host ../protocol/src/mock-launcher-host.mjs",
+        "visualize": "node dev/visualize.mjs"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "dependencies": {
+        "ink": "^7.1.1",
+        "react": "^19.2.0"
+    },
+    "devDependencies": {
+        "@cc-dayers/portal-protocol": "workspace:*",
+        "@types/react": "^19.2.0",
+        "esbuild": "^0.28.2"
+    }
+}

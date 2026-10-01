@@ -1,35 +1,24 @@
 {
-    "name": "@cc-dayers/portal-tools",
-    "version": "0.1.13",
-    "description": "Developer tooling for CareContinuity portal applications",
+    "name": "portal-tools",
+    "private": true,
+    "description": "Optional clients for the CareContinuity Portals launcher",
     "type": "module",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/cc-dayers/portal-tools.git"
     },
-    "bin": {
-        "cc-portals-tui": "src/bin.mjs"
-    },
-    "files": [
-        "src"
+    "workspaces": [
+        "packages/*"
     ],
     "scripts": {
-        "start": "node src/bin.mjs",
-        "dev": "node src/bin.mjs --host dev/mock-launcher-host.mjs -- --config",
-        "dev:quick": "node src/bin.mjs --host dev/mock-launcher-host.mjs",
-        "check": "node --check src/bin.mjs && node --check src/cli.mjs && node --check src/protocol-client.mjs && node --check src/config-tui.mjs && node --check src/dashboard-tui.mjs && node --check src/self-update.mjs && node --check dev/mock-launcher-host.mjs && node --check dev/render-frame.mjs && node --check dev/visualize.mjs",
-        "visualize": "node dev/visualize.mjs",
+        "build": "yarn workspaces foreach --all --exclude portal-tools --topological run build",
+        "check": "yarn workspaces foreach --all --exclude portal-tools --topological run check",
         "test": "vitest run"
     },
     "engines": {
         "node": ">=22"
     },
-    "dependencies": {
-        "ink": "^7.1.1",
-        "react": "^19.2.0"
-    },
     "devDependencies": {
-        "@types/react": "^19.2.0",
         "vite": "^7.0.0",
         "vitest": "^5.0.0"
     },

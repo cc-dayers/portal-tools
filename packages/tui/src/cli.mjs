@@ -6,12 +6,9 @@ import { PassThrough, Writable } from 'node:stream';
 
 import { runPortalConfigTui } from './config-tui.mjs';
 import { runPortalDashboard } from './dashboard-tui.mjs';
-import {
-    PROTOCOL,
-    PROTOCOL_VERSION,
-    connectToLauncherHost,
-    createDashboardLauncherAdapter,
-} from './protocol-client.mjs';
+import { PROTOCOL, PROTOCOL_VERSION, connectToLauncherHost } from '@cc-dayers/portal-protocol';
+
+import { createDashboardLauncherAdapter } from './dashboard-adapter.mjs';
 import { runSelfUpdate } from './self-update.mjs';
 
 const PACKAGE_VERSION = '0.1.13';

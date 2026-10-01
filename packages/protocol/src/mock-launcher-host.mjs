@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // Fake "launcher host" that speaks the same cc.portals.launcher v1 protocol
-// as ../../scripts/portal-launcher-host.mjs in the main Portals repo, but
-// never spawns a single real dev server. It exists so the TUI (this repo)
-// can be developed and demoed on its own, without the Portals monorepo.
+// as Portals/scripts/portal-launcher-host.mjs in carecontinuity.app, but
+// never spawns a single real dev server. It lets the TUI and the VS Code
+// extension be developed, demoed, and tested without the Portals monorepo.
 //
-// Run it directly with `node dev/run-mock.mjs` (see that file), or point
-// cc-portals-tui / the built cli.mjs at it manually:
-//   node src/bin.mjs --host dev/mock-launcher-host.mjs -- --config
+// Point a client at it, for example from packages/tui:
+//   node src/bin.mjs --host ../protocol/src/mock-launcher-host.mjs -- --config
 //
 // Scenario selection (env var MOCK_SCENARIO, default "happy"):
 //   happy      - every target starts and reaches "ready"
