@@ -1,108 +1,96 @@
 # CareContinuity Portal Tools
 
-`@cc-dayers/portal-tools` provides the optional terminal UI for the
-CareContinuity Portals development launcher. The TUI renders configuration,
-status, logs, and process controls. The authoritative launch behavior remains
-in the main CareContinuity repository.
+Optional clients for the CareContinuity Portals development launcher. The
+launcher in `carecontinuity.app/Portals` owns every launch decision; these
+tools only present it and send commands through its `cc.portals.launcher.v1`
+protocol. You never need them to run `yarn start`.
 
-## Using the TUI
+| Package | What it is | Install |
+| --- | --- | --- |
+| [`packages/tui`](packages/tui/README.md) | `cc-portals-tui`, a terminal UI | npm, from a GitHub release |
+| [`packages/vscode`](packages/vscode/README.md) | Portal Launcher, a VS Code sidebar | `.vsix`, from a GitHub release |
+| [`packages/protocol`](packages/protocol) | Protocol client and mock host shared by both | Not published; bundled into each tool |
 
-From the `Portals` directory in `carecontinuity.app`:
+## Installing
+
+Each tool is released separately. Pick a version from the
+[releases page](https://github.com/cc-dayers/portal-tools/releases): TUI
+releases are tagged `tui-vX.Y.Z` and extension releases `vscode-vX.Y.Z`.
+
+Terminal UI:
 
 ```powershell
-yarn start --install-tui
-yarn start --tui
+npm install --global https://github.com/cc-dayers/portal-tools/releases/download/tui-vX.Y.Z/cc-dayers-portal-tui.tgz
+cd L:\src\carecontinuity.app
+cc-portals-tui
 ```
 
-The first command installs the latest GitHub release globally. Rerun it to
-update an existing installation. Use `yarn start --tui --config` to reopen the
-configuration wizard. The standard `yarn start` launcher remains available
-without installing this package.
+Try it without installing: `npx --package <the same URL> cc-portals-tui`.
+Once installed, `cc-portals-tui --update` moves to the newest TUI release.
 
-From a running dashboard, press `a` to add a backend module without restarting
-the existing session. The host offers background or Visual Studio execution
-and optional hot reload when supported by the selected mode.
+VS Code extension: download `cc-portal-launcher-vscode.vsix` from a
+`vscode-v*` release, then run:
 
-Do not normally invoke `cc-portals-tui` directly. The Portals launcher supplies
-the matching host script and repository context.
+```powershell
+code --install-extension cc-portal-launcher-vscode.vsix
+```
+
+Open `carecontinuity.app` in VS Code and choose **Portal Launcher** in the
+Activity Bar.
 
 ## Repository boundary
 
-This repository owns:
-
-- Ink components, layout, keyboard and mouse interaction
-- The configuration wizard and runtime dashboard presentation
-- Client-side protocol handling
-- Standalone mock-host development and terminal-layout tests
-
-The `carecontinuity.app/Portals` repository owns:
-
-- Available portals and backend modules
-- Backend run modes, build targets, and dependency ordering
-- PowerShell-derived environment configuration and Azure authentication
-- Visual Studio integration
-- Child-process ownership, readiness, restart, and shutdown behavior
-- Saved launcher configuration and the protocol host
-
-The host sends available choices to the TUI. Avoid duplicating module lists,
-commands, ports, or environment logic here.
+This repository owns presentation, interaction, the protocol client, the mock
+host, and each tool's packaging. `carecontinuity.app/Portals` owns the
+portals and backend modules on offer, run modes, build and environment setup,
+Visual Studio integration, child-process ownership, saved configuration, and
+the protocol host. The host sends its choices to the clients; do not copy
+module lists, commands, ports, or environment logic into this repository.
 
 ## Protocol compatibility
 
-The current contract is `cc.portals.launcher.v1`, transported as newline-delimited
-JSON over the launcher host's standard input and output. Presentation-only
-changes can be released without changing the protocol.
+The current contract is `cc.portals.launcher.v1`: newline-delimited JSON over
+the launcher host's standard input and output. Presentation changes can ship
+without changing the protocol.
 
-Keep v1 compatible when changing:
+Keep v1 compatible when changing the handshake, session configuration and
+choices, command names and payloads, state, log, error and exit events, or
+target status values. Optional fields that older clients and hosts can ignore
+may stay in v1. Breaking changes need a new protocol version and coordinated
+changes in both repositories. Keep the mock host in `packages/protocol` aligned
+with the real host.
 
-- The handshake protocol name and supported version
-- Session configuration fields and choice objects
-- Command names and payloads
-- State, log, error, and exit events
-- Target status values and controller semantics
+## Developing
 
-Additive optional fields can remain in v1 when both older clients and hosts can
-safely ignore them. Breaking field, command, event, or behavior changes require
-a new protocol version and coordinated changes in both repositories.
-
-## Developing independently
-
-Node.js 22 and the package-pinned Yarn version are required. The included mock
-host allows UI work without cloning or starting backend modules:
+Node.js 22 and the Yarn version pinned in `package.json` are required.
 
 ```powershell
 corepack yarn install
-corepack yarn dev
-corepack yarn dev:quick
-corepack yarn visualize
+corepack yarn check     # syntax checks for every package
+corepack yarn test      # Vitest suites for every package
+corepack yarn build     # TUI and extension bundles
 ```
 
-See [dev/README.md](dev/README.md) for mock scenarios, terminal-size rendering,
-and snapshot guidance. Before releasing, run:
+Each package README covers its own development loop: the TUI's mock-host and
+layout tooling, and the extension's debug configurations and VS Code
+integration tests.
 
-```powershell
-corepack yarn check
-corepack yarn test
-```
+## Releasing
 
-## Publishing a release
+Releases are created only by the tag-triggered workflows in
+`.github/workflows`. Do not create a GitHub release or upload an asset by hand:
+creating a release also creates its tag, which starts the workflow, and the
+workflow then fails because the release already exists.
 
-The Portals installer downloads an asset named `cc-dayers-portal-tools.tgz`
-from the latest GitHub release. Releases are created by
-`.github/workflows/release.yml` when a `v*` tag is pushed. Do not create the
-GitHub release or upload the archive manually: creating a release also creates
-the tag, which triggers the workflow and makes its final `gh release create`
-step fail because the release already exists.
+1. Update `version` in the tool's `package.json` (`packages/tui` or
+   `packages/vscode`).
+2. Run `corepack yarn check`, `corepack yarn test`, and, for the extension,
+   `corepack yarn workspace cc-portal-launcher-vscode test:integration`.
+3. Push the release commit to `main`.
+4. Tag it as `tui-vX.Y.Z` or `vscode-vX.Y.Z` and push only that tag. The
+   workflow fails if the tag does not match the package version.
+5. Wait for the release workflow to pass, then install the published asset
+   as described above.
 
-1. Update the version in `package.json` and `PACKAGE_VERSION` in `src/cli.mjs`.
-2. Run `corepack yarn check` and `corepack yarn test`.
-3. Merge or push the release commit to `main`.
-4. Create the matching tag locally: `git tag vX.Y.Z`.
-5. Push only the tag: `git push origin vX.Y.Z`.
-6. Wait for the Release workflow to pass. It runs validation, creates the
-   archive, publishes the GitHub release, and attaches the correctly named asset.
-7. From `carecontinuity.app/Portals`, run `yarn start --install-tui` and verify
-   `cc-portals-tui --protocol-info`.
-
-If a release must be repaired, inspect the failed workflow before changing or
-recreating tags. Never reuse or force-move a published release tag.
+Never reuse or force-move a published release tag. If a release fails, read
+the workflow log before changing tags.

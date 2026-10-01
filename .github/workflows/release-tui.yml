@@ -1,0 +1,35 @@
+name: Release TUI
+
+on:
+  push:
+    tags:
+      - "tui-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: corepack prepare yarn@4.18.0 --activate
+      - run: yarn install --immutable
+      - name: Verify the tag matches packages/tui
+        run: |
+          version=$(node -p "require('./packages/tui/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "tui-v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match packages/tui version $version"
+            exit 1
+          fi
+      - run: yarn check
+      - run: yarn test
+      - run: yarn npm audit --all --recursive --severity moderate
+      - run: mkdir -p dist && yarn workspace @cc-dayers/portal-tui pack --out "$PWD/dist/cc-dayers-portal-tui.tgz"
+      - run: gh release create "$GITHUB_REF_NAME" dist/cc-dayers-portal-tui.tgz --verify-tag --generate-notes --title "Portal TUI ${GITHUB_REF_NAME#tui-v}"
+        env:
+          GH_TOKEN: ${{ github.token }}

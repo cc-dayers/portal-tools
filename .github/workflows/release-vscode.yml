@@ -1,0 +1,37 @@
+name: Release VS Code extension
+
+on:
+  push:
+    tags:
+      - "vscode-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: corepack prepare yarn@4.18.0 --activate
+      - run: yarn install --immutable
+      - name: Verify the tag matches packages/vscode
+        run: |
+          version=$(node -p "require('./packages/vscode/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "vscode-v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match packages/vscode version $version"
+            exit 1
+          fi
+      - run: yarn check
+      - run: yarn test
+      - run: yarn npm audit --all --recursive --severity moderate
+      # Integration tests need a desktop VS Code and run locally with `yarn test:integration`.
+      - run: yarn workspace cc-portal-launcher-vscode package
+      - run: mkdir -p dist && cp packages/vscode/cc-portal-launcher-vscode-*.vsix dist/cc-portal-launcher-vscode.vsix
+      - run: gh release create "$GITHUB_REF_NAME" dist/cc-portal-launcher-vscode.vsix --verify-tag --generate-notes --title "Portal Launcher for VS Code ${GITHUB_REF_NAME#vscode-v}"
+        env:
+          GH_TOKEN: ${{ github.token }}

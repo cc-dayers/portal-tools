@@ -22,5 +22,8 @@
         "vite": "^7.0.0",
         "vitest": "^5.0.0"
     },
-    "packageManager": "yarn@4.18.0"
+    "packageManager": "yarn@4.18.0",
+    "resolutions": {
+        "@vscode/test-cli/mocha": "^12.0.2"
+    }
 }
