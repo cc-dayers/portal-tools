@@ -7,6 +7,7 @@ import {
     useClickable,
     useMouse,
 } from './mouse.mjs';
+import { stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
 import { createThrottledOutput } from './output.mjs';
 import { truncateText } from './text.mjs';
 
@@ -100,7 +101,8 @@ export function createInitialTuiDraft(config, defaultBackendModules = []) {
             ? 'frontend-dev-api'
             : config.environment === 'local' && backendModules.length === 0
               ? 'frontend-local-api'
-              : config.backendProfile === 'dev' ? 'fullstack-dev-db' : 'fullstack-local-db';
+              : config.backendProfile === 'dev' ? 'fullstack-dev-db'
+                : config.backendProfile === 'lite' ? 'fullstack-shadow-db' : 'fullstack-local-db';
     const visualStudioModules = Array.isArray(config.visualStudioModules) ? config.visualStudioModules : [];
     const visualCount = backendModules.filter(alias => visualStudioModules.includes(alias)).length;
 
@@ -145,10 +147,10 @@ export async function runPortalConfigTui({
     portalChoices,
     backendChoices,
     stackModeChoices = [
-        { label: 'Full stack — local database', value: 'fullstack-local-db' },
-        { label: 'Full stack — dev database', value: 'fullstack-dev-db' },
-        { label: 'Frontend — local APIs', value: 'frontend-local-api' },
-        { label: 'Frontend — dev APIs', value: 'frontend-dev-api' },
+        { label: 'Full stack · local database', value: 'fullstack-local-db' },
+        { label: 'Full stack · dev database', value: 'fullstack-dev-db' },
+        { label: 'Frontend · local APIs', value: 'frontend-local-api' },
+        { label: 'Frontend · dev APIs', value: 'frontend-dev-api' },
     ],
     backendRunModeChoices = [
         { label: 'Background', value: 'background' },
@@ -1053,13 +1055,19 @@ function buildSections(draft, portalChoices, backendChoices, stackModeChoices, b
     ];
 
     if (draft.stackMode.startsWith('fullstack-')) {
+        const visualStudioSupported = stackModeSupportsVisualStudio(stackModeChoices, draft.stackMode);
         sections.push({
             id: 'backendRunMode',
             title: 'Backend execution',
             description: 'Let the launcher manage modules, open them in Visual Studio, or mix both.',
             summary: backendRunModeChoices.find(choice => choice.value === draft.backendRunMode)?.label,
             kind: 'single', field: 'backendRunMode',
-            choices: withSelection(backendRunModeChoices, draft.backendRunMode),
+            choices: withSelection(
+                visualStudioSupported
+                    ? backendRunModeChoices
+                    : backendRunModeChoices.map(choice => choice.value === 'background' ? choice : { ...choice, disabled: true }),
+                draft.backendRunMode,
+            ),
         }, {
             id: 'backendModules',
             title: 'Backend modules',
@@ -1125,8 +1133,8 @@ function buildSections(draft, portalChoices, backendChoices, stackModeChoices, b
             field: 'verbose',
             choices: withSelection(
                 [
-                    { label: 'Quiet — status board + log file', value: false },
-                    { label: 'Live — stream child output', value: true },
+                    { label: 'Quiet · status board + log file', value: false },
+                    { label: 'Live · stream child output', value: true },
                 ],
                 draft.verbose,
             ),
@@ -1184,6 +1192,9 @@ function updateDraft(draft, section, choice) {
         return next;
     }
 
+    if (section.field === 'stackMode' && choice.supportsVisualStudio === false) {
+        return { ...draft, stackMode: choice.value, backendRunMode: 'background', visualStudioModules: [] };
+    }
     return { ...draft, [section.field]: choice.value };
 }
 
@@ -1195,6 +1206,7 @@ function stackModeLabel(stackMode) {
     if (stackMode === 'frontend-dev-api') return 'Frontend + dev API';
     if (stackMode === 'frontend-local-api') return 'Frontend + local API';
     if (stackMode === 'fullstack-dev-db') return 'Full-stack + dev data';
+    if (stackMode === 'fullstack-shadow-db') return 'Full-stack + shadow data';
     return 'Full-stack + local data';
 }
 
@@ -1202,6 +1214,7 @@ function stackModeBadge(stackMode) {
     if (stackMode === 'frontend-dev-api') return 'DEV API';
     if (stackMode === 'frontend-local-api') return 'LOCAL API';
     if (stackMode === 'fullstack-dev-db') return 'DEV DB';
+    if (stackMode === 'fullstack-shadow-db') return 'SHADOW DB';
     return 'LOCAL DB';
 }
 

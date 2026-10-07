@@ -167,3 +167,10 @@ test('toLauncherConfig preserves selected local backend modules', () => {
         autoOpen: false,
     });
 });
+
+test('initial draft maps the lite backend profile to the shadow DB stack mode', () => {
+    const draft = createInitialTuiDraft({ portals: ['sso'], environment: 'local', backendModules: ['api'], backendProfile: 'lite' });
+
+    expect(draft.stackMode).toBe('fullstack-shadow-db');
+    expect(toLauncherConfig(draft)).toMatchObject({ stackMode: 'fullstack-shadow-db', backendModules: ['api'] });
+});

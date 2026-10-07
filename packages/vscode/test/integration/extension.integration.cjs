@@ -27,6 +27,23 @@ describe('Portal Launcher extension', () => {
         assert.equal(extension.exports.snapshot, null);
     });
 
+    it('reads compact/full display from VS Code user settings without launching', async () => {
+        await vscode.commands.executeCommand('ccPortalLauncher.showSettings');
+        assert.equal(extension.exports.phase, 'idle');
+        assert.equal(extension.exports.snapshot, null);
+        const config = vscode.workspace.getConfiguration('ccPortalLauncher');
+        const previous = config.inspect('presets.displayMode').globalValue;
+        try {
+            await config.update('presets.displayMode', 'compact', vscode.ConfigurationTarget.Global);
+            assert.equal(extension.exports.dashboard.presetDisplay, 'compact');
+            assert.equal(extension.exports.phase, 'idle');
+            await config.update('presets.displayMode', 'full', vscode.ConfigurationTarget.Global);
+            assert.equal(extension.exports.dashboard.presetDisplay, 'full');
+        } finally {
+            await config.update('presets.displayMode', previous, vscode.ConfigurationTarget.Global);
+        }
+    });
+
     it('launches the saved configuration, reaches ready, and returns to idle after Stop All', async () => {
         await vscode.commands.executeCommand('ccPortalLauncher.launchSaved');
         assert.equal(extension.exports.phase, 'running');
@@ -35,6 +52,10 @@ describe('Portal Launcher extension', () => {
             const targets = extension.exports.snapshot?.targets ?? [];
             return targets.length > 0 && targets.every((target) => target.status === 'ready');
         }, 'every mock target to become ready');
+
+        await vscode.commands.executeCommand('ccPortalLauncher.showSettings');
+        assert.equal(extension.exports.phase, 'running');
+        assert.ok(extension.exports.snapshot.targets.every((target) => target.status === 'ready'));
 
         await vscode.commands.executeCommand('ccPortalLauncher.stopAll');
         await waitFor(() => extension.exports.phase === 'idle', 'the session to exit');

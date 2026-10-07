@@ -7,6 +7,12 @@ const MAX_LINE_CHARS = 1_048_576;
 const MAX_BUFFERED_LOGS = 500;
 const REQUEST_TIMEOUT_MS = 10_000;
 
+// Stack-mode choices may carry the optional `supportsVisualStudio: false` field;
+// hosts that omit it allow Visual Studio, so older hosts keep their behaviour.
+export function stackModeSupportsVisualStudio(stackModeChoices, stackMode) {
+    return stackModeChoices?.find((choice) => choice.value === stackMode)?.supportsVisualStudio !== false;
+}
+
 export async function connectToLauncherHost({
     hostPath,
     hostArgs = [],

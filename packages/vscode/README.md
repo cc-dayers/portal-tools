@@ -14,7 +14,25 @@ backend as a card with live status and the actions that state allows.
   `yarn start:core-dev-api`, and `yarn start:all`.
 - **Your presets.** Save a running session or a new configuration as a preset
   for the workspace, then launch, edit, rename, or delete it.
+- **Last used.** Named configurations keep their nickname; unnamed launches show
+  a summary using the host's portal and stack labels. The name and details survive
+  an extension restart. Older history without a stored name gains one on its next launch.
+- **Preset settings.** Open the single gear in the extension's title bar to edit or delete custom
+  presets and choose Compact or Full display. Compact uses rocket launch
+  actions with descriptions on nickname hover; Full includes descriptions and
+  a labeled Launch action. Edit launch cards through their right-click menus.
+  The display preference is stored in the VS Code user setting
+  `ccPortalLauncher.presets.displayMode` (default: `full`). Editing defaults to
+  saving without launching; editing a starter saves a custom copy.
+- **Reset to defaults.** In Preset settings, confirm Reset to defaults to clear
+  this workspace's custom presets and launch history, restore the default display
+  preference, and return to first-run helper text with search and filters cleared. Available
+  only while idle; application launcher configuration and other workspaces' presets
+  are unchanged. The display preference is a user setting shared across workspaces.
 - **Configure.** A step-by-step Quick Pick with Back navigation.
+- **Session configuration.** The edit icon in a running session opens its current
+  configuration. Apply changes with a confirmed stop-and-relaunch, or save a
+  preset without stopping the session. Cancelling leaves the session running.
 - **Add backend.** Add a module to a running session in the background, with
   hot reload, or in Visual Studio.
 - The Activity Bar badge counts failed targets, and logs go to the

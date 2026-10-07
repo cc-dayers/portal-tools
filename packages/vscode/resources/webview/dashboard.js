@@ -2,6 +2,14 @@
     const vscode = acquireVsCodeApi();
     const app = document.getElementById('app');
     let view = null;
+    const DEFAULT_UI = { query: '', filter: '', page: 'dashboard' };
+    let ui = { ...DEFAULT_UI };
+
+    const FILTERS = [
+        { id: 'recent', label: 'Recent' },
+        { id: 'custom', label: 'Custom' },
+        { id: 'canned', label: 'Canned' },
+    ];
 
     // Codicon names, so the dashboard uses the same icon set as the rest of VS Code.
     const ICONS = {
@@ -11,8 +19,13 @@
         open: 'link-external',
         logs: 'output',
         plus: 'add',
-        gear: 'settings-gear',
-        more: 'ellipsis',
+        rocket: 'rocket',
+        edit: 'edit',
+        delete: 'trash',
+        back: 'arrow-left',
+        reset: 'discard',
+        lock: 'lock',
+        person: 'account',
     };
     const ACTION_META = {
         open: { icon: 'open', title: 'Open in browser' },
@@ -96,39 +109,110 @@
         return error ? `<div class="error" role="alert">${escape(error)}</div>` : '';
     }
 
-    function presetCard(preset, builtIn) {
-        return `<div class="preset" ${menuContext({ ccSection: 'preset', presetId: preset.id, ccBuiltIn: builtIn })}>
-            <span class="p-name">${escape(preset.name)}</span>
-            <span class="sub">${escape(preset.summary)}</span>
+    function kindTag(kind) {
+        return kind === 'canned'
+            ? `<span class="tag muted" title="Built-in starter. Edit and launch to save your own copy.">${icon('lock')}Canned</span>`
+            : `<span class="tag custom" title="Saved by you">${icon('person')}Custom</span>`;
+    }
+
+    function presetCard(preset, { pinned = false } = {}) {
+        const builtIn = preset.kind === 'canned';
+        const compact = view?.presetDisplay === 'compact';
+        return `<div class="preset${pinned ? ' default' : ''}${compact ? ' compact' : ''}" ${menuContext({ ccSection: 'preset', presetId: preset.id, ccBuiltIn: builtIn })}>
+            <span class="p-name"${compact ? ` title="${escape(preset.summary)}" tabindex="0"` : ''}>${escape(preset.name)}</span>
+            ${compact ? '' : kindTag(preset.kind)}
+            ${compact ? '' : `<span class="sub">${escape(preset.summary)}</span>`}
             <span class="acts">
-                <button class="btn" data-key="p:${escape(preset.id)}:launch" data-preset="${escape(preset.id)}" data-preset-action="launch">Launch</button>
-                <button class="ibtn" data-key="p:${escape(preset.id)}:menu" data-preset="${escape(preset.id)}" data-menu title="More actions" aria-label="More actions for ${escape(preset.name)}">${icon('more')}</button>
+                ${presetAction(preset, 'launch', 'rocket', 'Launch', { compact, primary: pinned })}
             </span>
         </div>`;
     }
 
+    function presetAction(preset, action, glyph, label, { compact, primary = false }) {
+        const disabled = action === 'edit' && view?.phase !== 'idle';
+        return `<button class="${compact ? 'ibtn' : 'btn'}${primary ? ' primary' : ''}" data-key="p:${escape(preset.id)}:${action}" data-preset="${escape(preset.id)}" data-preset-action="${action}" title="${disabled ? 'Stop the current session before editing' : `${label} ${escape(preset.name)}`}" aria-label="${label} ${escape(preset.name)}"${disabled ? ' disabled' : ''}>${icon(glyph)}${compact ? '' : escape(label)}</button>`;
+    }
+
+    function lastConfigurationCard(state) {
+        const compact = view?.presetDisplay === 'compact';
+        const { name = 'Last launch', summary = '' } = state.lastConfiguration ?? {};
+        return `<div class="preset default${compact ? ' compact' : ''}" ${menuContext({ ccSection: 'configuration' })}>
+            <span class="p-name" title="${escape(summary || name)}"${compact ? ' tabindex="0"' : ''}>${escape(name)}</span>
+            ${compact || !summary || summary === name ? '' : `<span class="sub">${escape(summary)}</span>`}
+            <span class="acts">
+                <button class="${compact ? 'ibtn' : 'btn'} primary" data-key="c:launchSaved" data-command="launchSaved" title="Launch ${escape(name)}" aria-label="Launch ${escape(name)}">${icon('rocket')}${compact ? '' : 'Launch'}</button>
+            </span>
+        </div>`;
+    }
+
+    function renderPresetSettings(state) {
+        const presets = state.presets.filter((preset) => preset.kind === 'custom');
+        return `${errorBanner(state.error)}
+            <div class="section">
+                <div class="settings-head"><button class="ibtn" data-key="nav:dashboard" data-page="dashboard" title="Back to dashboard" aria-label="Back to dashboard">${icon('back')}</button><h2>Preset settings</h2></div>
+                <div class="setting-row"><span>Display</span><div class="display-modes" role="group" aria-label="Preset display">
+                    ${['compact', 'full'].map((mode) => `<button data-key="display:${mode}" data-display-mode="${mode}" aria-pressed="${(state.presetDisplay ?? 'full') === mode}">${mode === 'compact' ? 'Compact' : 'Full'}</button>`).join('')}
+                </div></div>
+            </div>
+            <div class="section">
+                <div class="section-head"><span>Custom presets</span><span class="count">${presets.length}</span></div>
+                <div class="list">${presets.length ? presets.map((preset) => `<div class="managed-preset"><span class="p-name" title="${escape(preset.summary)}">${escape(preset.name)}</span><span class="acts">
+                    ${presetAction(preset, 'edit', 'edit', 'Edit', { compact: true })}
+                    ${presetAction(preset, 'delete', 'delete', 'Delete', { compact: true })}
+                </span></div>`).join('') : '<p class="empty">No custom presets.</p>'}</div>
+            </div>
+            <div class="section">
+                <div class="setting-row"><span>Defaults</span><button class="btn" data-key="c:resetDefaults" data-command="resetDefaults" title="Reset to defaults"${state.phase === 'idle' ? '' : ' disabled'}>${icon('reset')}Reset to defaults</button></div>
+            </div>`;
+    }
+
+    function visiblePresets(state) {
+        const query = ui.query.trim().toLowerCase();
+        return state.presets.filter((preset) => {
+            if (preset.id === state.lastUsedId) return false;
+            if (ui.filter === 'recent' && preset.lastUsedAt === null) return false;
+            if ((ui.filter === 'custom' || ui.filter === 'canned') && preset.kind !== ui.filter) return false;
+            return !query || `${preset.name} ${preset.summary}`.toLowerCase().includes(query);
+        });
+    }
+
+    function presetListHtml(state) {
+        const visible = visiblePresets(state);
+        if (visible.length > 0) return visible.map((preset) => presetCard(preset)).join('');
+        const none = ui.filter === 'custom' && !ui.query && !state.presets.some((preset) => preset.kind === 'custom');
+        return `<p class="empty">${
+            none
+                ? 'Save a running session from the title bar, or choose "Save as preset" at the end of Configure.'
+                : 'No presets match.'
+        }</p>`;
+    }
+
+    function gettingStarted() {
+        return `<ol class="help">
+            <li>Launch a <b>canned</b> preset below to start right away.</li>
+            <li>Or choose <b>Configure new launch…</b> to pick portals and backend modules, then save it as a <b>custom</b> preset.</li>
+            <li>Your latest launch is pinned here so you can run it again in one click.</li>
+        </ol>`;
+    }
+
     function renderIdle(state) {
-        const saved = state.presets.length
-            ? state.presets.map((preset) => presetCard(preset, false)).join('')
-            : '<p class="empty">Save a running session from the title bar, or choose "Save as preset" at the end of Configure.</p>';
+        const last = state.presets.find((preset) => preset.id === state.lastUsedId);
+        const hasLast = Boolean(last || (state.hasLaunched && state.lastConfiguration));
+        const pills = FILTERS.map(
+            ({ id, label }) =>
+                `<button class="pill" data-key="f:${id}" data-filter="${id}" aria-pressed="${ui.filter === id}">${label}</button>`,
+        ).join('');
 
         return `${errorBanner(state.error)}
             <div class="section">
-                <div class="section-head"><span>Launch</span></div>
-                <div class="preset default">
-                    <span class="p-name">Saved configuration</span>
-                    <span class="sub">The setup the launcher used last</span>
-                    <span class="acts">${commandButton('launchSaved', 'Launch', { primary: true })}</span>
-                </div>
-                <button class="add" data-key="c:configure" data-command="configure">${icon('gear')}Configure new launch…</button>
+                ${hasLast ? `<div class="section-head"><span>Last used</span></div>${last ? presetCard(last, { pinned: true }) : lastConfigurationCard(state)}` : gettingStarted()}
+                <button class="add" data-key="c:configure" data-command="configure">${icon('plus')}Configure new launch…</button>
             </div>
             <div class="section">
-                <div class="section-head"><span>Starter presets</span></div>
-                ${state.starters.map((preset) => presetCard(preset, true)).join('')}
-            </div>
-            <div class="section">
-                <div class="section-head"><span>Your presets</span><span class="count">${state.presets.length || ''}</span></div>
-                ${saved}
+                <div class="section-head"><span>Presets</span><span class="count">${state.presets.length}</span></div>
+                <input class="search" type="search" data-key="search" placeholder="Search presets" aria-label="Search presets" value="${escape(ui.query)}">
+                <div class="pills" role="group" aria-label="Filter presets">${pills}</div>
+                <div class="list" id="preset-list">${presetListHtml(state)}</div>
             </div>`;
     }
 
@@ -156,7 +240,7 @@
             <div class="panel${busy ? ' busy' : ''}">
                 <div class="panel-top">
                     <span class="panel-name">${escape(session.name)}</span>
-                    <span class="meta" role="status">${escape(session.label)}</span>
+                    <span class="head-actions"><span class="meta" role="status">${escape(session.label)}</span><button class="ibtn" data-key="c:editSession" data-command="editSession" title="Edit session configuration" aria-label="Edit session configuration"${running ? '' : ' disabled'}>${icon('edit')}</button></span>
                 </div>
                 <div class="segbar" aria-hidden="true">${targets.map((target) => `<i data-s="${escape(target.status)}"></i>`).join('')}</div>
                 <div class="row">
@@ -171,20 +255,38 @@
     function render() {
         if (!view) return;
         const focusedKey = document.activeElement?.getAttribute('data-key');
-        app.innerHTML = view.phase === 'idle' ? renderIdle(view) : renderSession(view);
-        if (focusedKey) app.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)?.focus();
+        app.innerHTML = ui.page === 'settings' ? renderPresetSettings(view) : view.phase === 'idle' ? renderIdle(view) : renderSession(view);
+        if (focusedKey) {
+            const focused = app.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`);
+            focused?.focus();
+            if (focused instanceof HTMLInputElement) focused.setSelectionRange(focused.value.length, focused.value.length);
+        }
     }
+
+    const saveState = () => vscode.setState({ view, ui });
+
+    app.addEventListener('input', (event) => {
+        if (!(event.target instanceof HTMLInputElement) || !event.target.classList.contains('search')) return;
+        ui = { ...ui, query: event.target.value };
+        saveState();
+        const list = document.getElementById('preset-list');
+        if (list && view) list.innerHTML = presetListHtml(view);
+    });
 
     app.addEventListener('click', (event) => {
         const button = event.target instanceof Element ? event.target.closest('button') : null;
         if (!button || button.disabled) return;
-        if (button.hasAttribute('data-menu')) {
-            // Opens the native context menu for the enclosing preset, as the webview guide recommends for split buttons.
-            const rect = button.getBoundingClientRect();
-            button.dispatchEvent(
-                new MouseEvent('contextmenu', { bubbles: true, clientX: rect.left, clientY: rect.bottom }),
-            );
-            event.stopPropagation();
+        if (button.dataset.filter) {
+            ui = { ...ui, filter: ui.filter === button.dataset.filter ? '' : button.dataset.filter };
+            saveState();
+            render();
+        } else if (button.dataset.page) {
+            ui = { ...ui, page: button.dataset.page };
+            saveState();
+            render();
+            app.querySelector(`[data-page="${ui.page === 'settings' ? 'dashboard' : 'settings'}"]`)?.focus();
+        } else if (button.dataset.displayMode) {
+            vscode.postMessage({ type: 'setting', key: 'presets.displayMode', value: button.dataset.displayMode });
         } else if (button.dataset.target) {
             vscode.postMessage({ type: 'target', targetId: button.dataset.target, action: button.dataset.action });
         } else if (button.dataset.command) {
@@ -195,9 +297,11 @@
     });
 
     window.addEventListener('message', (event) => {
-        if (event.data?.type !== 'render') return;
+        if (!['render', 'reset', 'settings'].includes(event.data?.type)) return;
+        if (event.data.type === 'reset') ui = { ...DEFAULT_UI };
+        if (event.data.type === 'settings') ui = { ...ui, page: 'settings' };
         view = event.data.view;
-        vscode.setState({ view });
+        saveState();
         render();
     });
 
@@ -209,6 +313,7 @@
 
     document.body.setAttribute('data-vscode-context', JSON.stringify({ preventDefaultContextMenuItems: true }));
     view = vscode.getState()?.view ?? null;
+    ui = { ...ui, ...vscode.getState()?.ui };
     render();
     vscode.postMessage({ type: 'ready' });
 })();

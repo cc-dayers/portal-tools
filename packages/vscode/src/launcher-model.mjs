@@ -72,6 +72,45 @@ export function isAllowedTargetAction(snapshot, targetId, action) {
     return Boolean(target) && targetActions(target, snapshot).includes(action);
 }
 
+const CODICON_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+// Presentation is the client's concern: the launcher host sends domain values only,
+// so icons and headings are chosen here unless a host supplies its own.
+const CHOICE_PRESENTATION = Object.freeze({
+    'fullstack-local-db': { icon: 'database', group: 'Full stack' },
+    'fullstack-dev-db': { icon: 'cloud', group: 'Full stack' },
+    'fullstack-shadow-db': { icon: 'beaker', group: 'Full stack' },
+    'frontend-local-api': { icon: 'plug', group: 'Frontend only' },
+    'frontend-dev-api': { icon: 'globe', group: 'Frontend only' },
+    background: { icon: 'terminal' },
+    vs: { icon: 'debug-alt' },
+    mixed: { icon: 'split-horizontal' },
+    'kill-before-start': { icon: 'debug-stop' },
+    'auto-restart': { icon: 'sync' },
+    none: { icon: 'circle-slash' },
+});
+
+// Turns host choices into picker entries; `icon` is a codicon name and `group` becomes a heading.
+export function choiceEntries(choices) {
+    const entries = [];
+    let group = '';
+    for (const choice of choices ?? []) {
+        const presentation = CHOICE_PRESENTATION[choice.value] ?? {};
+        const groupName = choice.group ?? presentation.group;
+        const heading = typeof groupName === 'string' ? groupName.trim() : '';
+        if (heading && heading !== group) entries.push({ separator: true, label: heading });
+        group = heading;
+        const iconName = choice.icon ?? presentation.icon;
+        const icon = typeof iconName === 'string' && CODICON_NAME.test(iconName) ? iconName : '';
+        entries.push({
+            label: icon ? `$(${icon}) ${choice.label}` : choice.label,
+            description: choice.description,
+            value: choice.value,
+        });
+    }
+    return entries;
+}
+
 export function selectionSummary(selection, choices) {
     const label = (list, value) => list?.find((choice) => choice.value === value)?.label ?? value;
     const parts = [
@@ -130,6 +169,30 @@ export function removePreset(presets, id) {
     return presets.filter((candidate) => candidate.id !== id);
 }
 
+export const EMPTY_USAGE = Object.freeze({ last: null, used: {} });
+
+// `last.presetId` is null when the most recent launch was not a preset (saved configuration or an unsaved selection).
+export function recordUse(usage, presetId, at = Date.now(), configuration = null) {
+    const used = usage?.used ?? {};
+    return {
+        last: {
+            presetId: presetId ?? null,
+            at,
+            ...(configuration ? { name: configuration.name, summary: configuration.summary } : {}),
+        },
+        used: presetId ? { ...used, [presetId]: at } : used,
+    };
+}
+
+// Passing `to = null` forgets the preset.
+export function moveUsage(usage, from, to) {
+    const { [from]: at, ...used } = usage?.used ?? {};
+    return {
+        last: usage?.last?.presetId === from ? { ...usage.last, presetId: to } : (usage?.last ?? null),
+        used: to && at !== undefined ? { ...used, [to]: at } : used,
+    };
+}
+
 export function backendAdditionChoices(selection, choices) {
     if (!isFullStack(selection)) return [];
     const running = new Set(selection.backendModules ?? []);
@@ -153,14 +216,22 @@ export function applyBackendAddition(selection, { module, runMode, watch = false
     };
 }
 
-export function buildDashboardView({ phase, snapshot = null, presets = [], sessionName, selection, choices, error = null }) {
+export function buildDashboardView({ phase, snapshot = null, presets = [], usage = EMPTY_USAGE, sessionName, selection, choices, error = null, presetDisplay = 'full' }) {
+    const used = usage?.used ?? {};
+    const entry = (kind) => ({ id, name, summary }) => ({ id, name, summary, kind, lastUsedAt: used[id] ?? null });
+    const all = [...presets.map(entry('custom')), ...BUILT_IN_PRESETS.map(entry('canned'))].sort(
+        (first, second) => (second.lastUsedAt ?? 0) - (first.lastUsedAt ?? 0),
+    );
+    const presetState = { presets: all, presetDisplay: presetDisplay === 'compact' ? 'compact' : 'full' };
     if (phase === 'idle') {
-        const summarize = ({ id, name, summary }) => ({ id, name, summary });
+        const lastId = usage?.last?.presetId;
         return {
             phase,
             error,
-            starters: BUILT_IN_PRESETS.map(summarize),
-            presets: presets.map(summarize),
+            ...presetState,
+            hasLaunched: Boolean(usage?.last),
+            lastUsedId: all.some((preset) => preset.id === lastId) ? lastId : null,
+            lastConfiguration: usage?.last ? { name: usage.last.name || 'Last launch', summary: usage.last.summary || '' } : null,
         };
     }
 
@@ -168,6 +239,7 @@ export function buildDashboardView({ phase, snapshot = null, presets = [], sessi
     return {
         phase,
         error,
+        ...presetState,
         session: {
             name: sessionName || 'Custom launch',
             label: snapshot ? sessionLabel(snapshot) : 'Preparing launch',

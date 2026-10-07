@@ -34,6 +34,7 @@ const codicons = path.dirname(createRequire(import.meta.url).resolve('@vscode/co
 await Promise.all([
     cp(path.join(root, 'resources', 'webview', 'dashboard.js'), path.join(webview, 'dashboard.js')),
     cp(path.join(root, 'resources', 'webview', 'dashboard.css'), path.join(webview, 'dashboard.css')),
+    cp(path.join(root, 'resources', 'webview', 'logo.svg'), path.join(webview, 'logo.svg')),
     cp(path.join(codicons, 'codicon.css'), path.join(webview, 'codicon.css')),
     cp(path.join(codicons, 'codicon.ttf'), path.join(webview, 'codicon.ttf')),
 ]);

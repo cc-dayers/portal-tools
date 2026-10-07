@@ -6,8 +6,11 @@ import {
     backendAdditionChoices,
     buildDashboardView,
     buildTargetGroups,
+    choiceEntries,
     findPreset,
     isAllowedTargetAction,
+    moveUsage,
+    recordUse,
     removePreset,
     renamePreset,
     resolvePresetSelection,
@@ -131,6 +134,45 @@ describe('selectionSummary', () => {
     });
 });
 
+describe('choiceEntries', () => {
+    test('prefixes valid codicon names and inserts a heading when the group changes', () => {
+        expect(
+            choiceEntries([
+                { label: 'Local', value: 'a', icon: 'database', group: 'Full stack' },
+                { label: 'Dev', value: 'b', icon: 'cloud', group: 'Full stack' },
+                { label: 'APIs', value: 'c', group: 'Frontend only' },
+            ]),
+        ).toEqual([
+            { separator: true, label: 'Full stack' },
+            { label: '$(database) Local', description: undefined, value: 'a' },
+            { label: '$(cloud) Dev', description: undefined, value: 'b' },
+            { separator: true, label: 'Frontend only' },
+            { label: 'APIs', description: undefined, value: 'c' },
+        ]);
+    });
+
+    test('ignores malformed icon names and tolerates missing choices', () => {
+        expect(choiceEntries([{ label: 'X', value: 'x', icon: 'bad name~spin' }])).toEqual([
+            { label: 'X', description: undefined, value: 'x' },
+        ]);
+        expect(choiceEntries(undefined)).toEqual([]);
+    });
+
+    test('supplies its own icons and headings for the domain-only choices the real host sends', () => {
+        expect(
+            choiceEntries([
+                { label: 'Full-stack · local data', value: 'fullstack-local-db', description: 'Local data' },
+                { label: 'Frontend · dev API', value: 'frontend-dev-api' },
+            ]),
+        ).toEqual([
+            { separator: true, label: 'Full stack' },
+            { label: '$(database) Full-stack · local data', description: 'Local data', value: 'fullstack-local-db' },
+            { separator: true, label: 'Frontend only' },
+            { label: '$(globe) Frontend · dev API', description: undefined, value: 'frontend-dev-api' },
+        ]);
+    });
+});
+
 describe('presets', () => {
     const now = () => 1000;
 
@@ -228,15 +270,74 @@ describe('backend additions', () => {
     });
 });
 
+describe('usage', () => {
+    test('recordUse tracks the last launch and per-preset timestamps', () => {
+        const first = recordUse(undefined, 'a', 10);
+        expect(first).toEqual({ last: { presetId: 'a', at: 10 }, used: { a: 10 } });
+        expect(recordUse(first, null, 20)).toEqual({ last: { presetId: null, at: 20 }, used: { a: 10 } });
+    });
+
+    test('preserves the configuration name and summary when its preset is removed', () => {
+        const usage = recordUse(undefined, 'daily', 10, { name: 'Daily', summary: 'SSO' });
+        expect(moveUsage(usage, 'daily', null)).toEqual({
+            last: { presetId: null, at: 10, name: 'Daily', summary: 'SSO' }, used: {},
+        });
+    });
+
+    test('moveUsage renames or forgets a preset', () => {
+        const usage = { last: { presetId: 'a', at: 10 }, used: { a: 10, b: 5 } };
+        expect(moveUsage(usage, 'a', 'c')).toEqual({ last: { presetId: 'c', at: 10 }, used: { b: 5, c: 10 } });
+        expect(moveUsage(usage, 'a', null)).toEqual({ last: { presetId: null, at: 10 }, used: { b: 5 } });
+    });
+});
+
 describe('buildDashboardView', () => {
-    test('describes an idle launcher with the saved configuration and presets', () => {
+    test('lists custom then canned presets with kinds when nothing has been used', () => {
         const presets = [{ id: 'p', name: 'P', summary: 'SSO · Frontend · dev API', selection: {}, savedAt: 1 }];
         expect(buildDashboardView({ phase: 'idle', presets })).toEqual({
             phase: 'idle',
             error: null,
-            starters: BUILT_IN_PRESETS.map(({ id, name, summary }) => ({ id, name, summary })),
-            presets: [{ id: 'p', name: 'P', summary: 'SSO · Frontend · dev API' }],
+            presetDisplay: 'full',
+            hasLaunched: false,
+            lastUsedId: null,
+            lastConfiguration: null,
+            presets: [
+                { id: 'p', name: 'P', summary: 'SSO · Frontend · dev API', kind: 'custom', lastUsedAt: null },
+                ...BUILT_IN_PRESETS.map(({ id, name, summary }) => ({ id, name, summary, kind: 'canned', lastUsedAt: null })),
+            ],
         });
+    });
+
+    test('normalizes display preferences and keeps presets available during a session', () => {
+        const presets = [{ id: 'custom', name: 'Custom', summary: 'SSO', selection: {} }];
+        const view = buildDashboardView({ phase: 'running', presets, presetDisplay: 'compact' });
+        expect(view.presetDisplay).toBe('compact');
+        expect(view.presets[0]).toMatchObject({ id: 'custom', name: 'Custom', kind: 'custom' });
+        expect(view.presets.filter((preset) => preset.kind === 'canned')).toHaveLength(BUILT_IN_PRESETS.length);
+        expect(buildDashboardView({ phase: 'idle', presetDisplay: 'invalid' }).presetDisplay).toBe('full');
+    });
+
+    test('shows persisted configuration details even without a preset or live host choices', () => {
+        const usage = recordUse(undefined, null, 10, { name: 'Patients debug', summary: 'SSO, API, Patients (VS)' });
+        expect(buildDashboardView({ phase: 'idle', usage })).toMatchObject({
+            hasLaunched: true, lastUsedId: null,
+            lastConfiguration: { name: 'Patients debug', summary: 'SSO, API, Patients (VS)' },
+        });
+        expect(buildDashboardView({ phase: 'idle', usage: recordUse(undefined, null, 10) }).lastConfiguration).toEqual({
+            name: 'Last launch', summary: '',
+        });
+    });
+
+    test('sorts by last use and reports the last-used preset only while it still exists', () => {
+        const presets = [{ id: 'p', name: 'P', summary: '', selection: {}, savedAt: 1 }];
+        const usage = { last: { presetId: 'builtin-all', at: 30 }, used: { p: 20, 'builtin-all': 30 } };
+        const view = buildDashboardView({ phase: 'idle', presets, usage });
+        expect(view.presets.slice(0, 2).map((preset) => preset.id)).toEqual(['builtin-all', 'p']);
+        expect(view.lastUsedId).toBe('builtin-all');
+        expect(view.hasLaunched).toBe(true);
+
+        const gone = buildDashboardView({ phase: 'idle', presets, usage: { last: { presetId: 'deleted', at: 40 }, used: {} } });
+        expect(gone.lastUsedId).toBeNull();
     });
 
     test('describes a running session with grouped targets, allowed actions, and add availability', () => {

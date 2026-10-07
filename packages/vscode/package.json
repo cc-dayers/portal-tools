@@ -2,9 +2,10 @@
     "name": "cc-portal-launcher-vscode",
     "displayName": "CareContinuity Portal Launcher (Experimental)",
     "description": "VS Code dashboard for the CareContinuity portal launcher.",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "private": true,
     "publisher": "cc-dayers",
+    "icon": "resources/icon.png",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/cc-dayers/portal-tools.git",
@@ -28,6 +29,25 @@
     "activationEvents": [],
     "main": "./dist/extension.js",
     "contributes": {
+        "configuration": {
+            "title": "Portal Launcher",
+            "properties": {
+                "ccPortalLauncher.presets.displayMode": {
+                    "type": "string",
+                    "enum": [
+                        "compact",
+                        "full"
+                    ],
+                    "enumDescriptions": [
+                        "Show preset names and icon actions, with descriptions on hover.",
+                        "Show preset descriptions and labeled actions."
+                    ],
+                    "default": "full",
+                    "scope": "application",
+                    "description": "How presets are displayed in the Portal Launcher dashboard."
+                }
+            }
+        },
         "commands": [
             {
                 "command": "ccPortalLauncher.launchSaved",
@@ -38,6 +58,12 @@
             {
                 "command": "ccPortalLauncher.configure",
                 "title": "Configure New Launch",
+                "category": "Portal Launcher",
+                "icon": "$(add)"
+            },
+            {
+                "command": "ccPortalLauncher.showSettings",
+                "title": "Settings",
                 "category": "Portal Launcher",
                 "icon": "$(settings-gear)"
             },
@@ -78,8 +104,14 @@
             },
             {
                 "command": "ccPortalLauncher.preset.edit",
-                "title": "Edit and Launch…",
+                "title": "Edit Preset…",
                 "category": "Portal Launcher"
+            },
+            {
+                "command": "ccPortalLauncher.configuration.edit",
+                "title": "Edit Configuration…",
+                "category": "Portal Launcher",
+                "enablement": "ccPortalLauncher.session == idle"
             },
             {
                 "command": "ccPortalLauncher.preset.rename",
@@ -121,7 +153,7 @@
             "activitybar": [
                 {
                     "id": "ccPortalLauncher",
-                    "title": "Portal Launcher",
+                    "title": "Care Continuity App Launcher",
                     "icon": "resources/portal-launcher.svg"
                 }
             ]
@@ -131,26 +163,28 @@
                 {
                     "type": "webview",
                     "id": "ccPortalLauncher.dashboard",
-                    "name": "Dashboard"
+                    "name": "Care Continuity App Launcher",
+                    "contextualTitle": "Care Continuity App Launcher",
+                    "icon": "resources/portal-launcher.svg"
                 }
             ]
         },
         "menus": {
             "view/title": [
                 {
-                    "command": "ccPortalLauncher.configure",
-                    "when": "view == ccPortalLauncher.dashboard && ccPortalLauncher.session == idle",
+                    "command": "ccPortalLauncher.showSettings",
+                    "when": "view == ccPortalLauncher.dashboard",
                     "group": "navigation@1"
                 },
                 {
                     "command": "ccPortalLauncher.savePreset",
                     "when": "view == ccPortalLauncher.dashboard && ccPortalLauncher.session == running",
-                    "group": "navigation@1"
+                    "group": "navigation@2"
                 },
                 {
                     "command": "ccPortalLauncher.showLogs",
                     "when": "view == ccPortalLauncher.dashboard",
-                    "group": "navigation@2"
+                    "group": "navigation@3"
                 }
             ],
             "commandPalette": [
@@ -176,6 +210,10 @@
                 },
                 {
                     "command": "ccPortalLauncher.preset.edit",
+                    "when": "false"
+                },
+                {
+                    "command": "ccPortalLauncher.configuration.edit",
                     "when": "false"
                 },
                 {
@@ -208,6 +246,16 @@
                 }
             ],
             "webview/context": [
+                {
+                    "command": "ccPortalLauncher.launchSaved",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'configuration'",
+                    "group": "1_preset@1"
+                },
+                {
+                    "command": "ccPortalLauncher.configuration.edit",
+                    "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'configuration'",
+                    "group": "1_preset@2"
+                },
                 {
                     "command": "ccPortalLauncher.preset.launch",
                     "when": "webviewId == 'ccPortalLauncher.dashboard' && ccSection == 'preset'",

@@ -15,14 +15,6 @@ export function createThrottledOutput(output, intervalMs = 25, pollIntervalMs = 
 
     const handleResize = () => {
         if (disposed || resizeTimer) return;
-        const dimensionsKnown = output.columns != null || output.rows != null;
-        if (
-            dimensionsKnown &&
-            output.columns === lastColumns &&
-            output.rows === lastRows
-        ) {
-            return;
-        }
 
         resizeTimer = setTimeout(() => {
             resizeTimer = null;

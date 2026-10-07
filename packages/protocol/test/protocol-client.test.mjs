@@ -5,6 +5,7 @@ import {
     PROTOCOL,
     PROTOCOL_VERSION,
     createProtocolClient,
+    stackModeSupportsVisualStudio,
 } from '../src/protocol-client.mjs';
 
 test('protocol client sends the configured client identity during the handshake', async () => {
@@ -93,3 +94,14 @@ async function waitFor(predicate, timeoutMs = 1000) {
         await new Promise((resolve) => setTimeout(resolve, 5));
     }
 }
+
+test('stack modes allow Visual Studio unless the host sends supportsVisualStudio: false', () => {
+    const stackModes = [
+        { value: 'fullstack-local-db' },
+        { value: 'fullstack-shadow-db', supportsVisualStudio: false },
+    ];
+
+    expect(stackModeSupportsVisualStudio(stackModes, 'fullstack-local-db')).toBe(true);
+    expect(stackModeSupportsVisualStudio(stackModes, 'fullstack-shadow-db')).toBe(false);
+    expect(stackModeSupportsVisualStudio(undefined, 'fullstack-local-db')).toBe(true);
+});

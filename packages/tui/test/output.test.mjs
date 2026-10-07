@@ -52,21 +52,3 @@ test('createThrottledOutput synchronizes dimensions on native resize to avoid du
 
     throttled.dispose();
 });
-
-test('createThrottledOutput ignores a late native event after polling reported the same size', async () => {
-    const output = new PassThrough();
-    output.columns = 80;
-    output.rows = 24;
-    const throttled = createThrottledOutput(output, 25, 10);
-    const listener = vi.fn();
-    throttled.stdout.on('resize', listener);
-
-    output.columns = 100;
-    await new Promise((resolve) => setTimeout(resolve, 15));
-    output.emit('resize');
-
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    throttled.dispose();
-});

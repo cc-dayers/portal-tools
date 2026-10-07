@@ -23,13 +23,15 @@ const PROTOCOL = 'cc.portals.launcher.v1';
 const PROTOCOL_VERSION = 1;
 const SCENARIO = process.env.MOCK_SCENARIO || 'happy';
 
+// Choices mirror the real host's session-ready payload exactly: domain values only.
+// Presentation (icons, headings, colours) belongs to each client.
 const MOCK_PORTAL_CHOICES = [
-    { label: 'SSO', value: 'sso', color: 'magenta' },
-    { label: 'Provider', value: 'provider', color: 'cyan' },
-    { label: 'Coordinator', value: 'coordinator', color: 'yellow' },
-    { label: 'Admin', value: 'admin', color: 'red' },
-    { label: 'Reports', value: 'reports', color: 'green' },
-    { label: 'Patient', value: 'patient', color: 'blue' },
+    { label: 'SSO', value: 'sso' },
+    { label: 'Provider', value: 'provider' },
+    { label: 'Coordinator', value: 'coordinator' },
+    { label: 'Admin', value: 'admin' },
+    { label: 'Reports', value: 'reports' },
+    { label: 'Patient', value: 'patient' },
 ];
 
 const MOCK_BACKEND_CHOICES = [
@@ -37,25 +39,34 @@ const MOCK_BACKEND_CHOICES = [
     { label: 'Authentication', value: 'auth' },
     { label: 'Patients', value: 'patients' },
     { label: 'Dev Proxy', value: 'proxy' },
-    { label: 'Appointments', value: 'appointments' },
-    { label: 'Data Flows', value: 'dataflows' },
     { label: 'Notifications', value: 'notifications' },
-    { label: 'Populations', value: 'populations' },
     { label: 'Tasks', value: 'tasks' },
+    { label: 'Appointments', value: 'appointments' },
     { label: 'Workflows', value: 'workflows' },
+    { label: 'Populations', value: 'populations' },
+    { label: 'DataFlows', value: 'dataflows' },
 ];
 
 const MOCK_STACK_MODE_CHOICES = [
-    { label: 'Full stack — local database', value: 'fullstack-local-db' },
-    { label: 'Full stack — dev database', value: 'fullstack-dev-db' },
-    { label: 'Frontend — local APIs', value: 'frontend-local-api' },
-    { label: 'Frontend — dev APIs', value: 'frontend-dev-api' },
+    { label: 'Full-stack · local data', value: 'fullstack-local-db', description: 'Local frontend and backend using local data' },
+    { label: 'Full-stack · dev data', value: 'fullstack-dev-db', description: 'Local frontend and backend using dev data' },
+    { label: 'Frontend · local API', value: 'frontend-local-api', description: 'Local frontend using an independently managed local API' },
+    { label: 'Frontend · dev API', value: 'frontend-dev-api', description: 'Local frontend using the deployed dev API' },
 ];
+
+// The real host offers this only where its experimental shadow-data tooling exists;
+// the mock offers it with --shadow-db.
+const MOCK_SHADOW_STACK_MODE_CHOICE = {
+    label: 'Full-stack · shadow data',
+    value: 'fullstack-shadow-db',
+    description: 'Local frontend and backend using shadow data (experimental)',
+    supportsVisualStudio: false,
+};
 
 const MOCK_BACKEND_RUN_MODE_CHOICES = [
     { label: 'Background', value: 'background' },
-    { label: 'Visual Studio', value: 'vs' },
-    { label: 'Mixed', value: 'mixed' },
+    { label: 'Visual Studio', value: 'vs', disabled: false },
+    { label: 'Mixed', value: 'mixed', disabled: false },
 ];
 
 const MOCK_EXISTING_SERVER_CHOICES = [
@@ -64,17 +75,19 @@ const MOCK_EXISTING_SERVER_CHOICES = [
     { label: 'None', value: 'none', description: 'let server commands fail normally' },
 ];
 
+// The real host sends its own saved-config format (environment/backendProfile),
+// not the client selection model used by initialSelection.
 const MOCK_SAVED_CONFIG = {
     portals: ['sso', 'provider'],
-    stackMode: 'frontend-dev-api',
-    backendRunMode: 'background',
+    environment: 'dev-api',
     backendModules: [],
-    visualStudioModules: [],
+    backendProfile: 'local',
     backendWatchModules: [],
+    visualStudioModules: [],
     buildMode: 'dev',
-    existingServerMode: 'auto-restart',
     verbose: false,
     autoOpen: true,
+    existingServerMode: 'auto-restart',
 };
 
 export function createMockLauncherHost({
@@ -145,9 +158,12 @@ export function createMockLauncherHost({
             choices: {
                 portals: MOCK_PORTAL_CHOICES,
                 backendModules: MOCK_BACKEND_CHOICES,
-                stackModes: MOCK_STACK_MODE_CHOICES,
+                stackModes: cliArgs.has('--shadow-db')
+                    ? [...MOCK_STACK_MODE_CHOICES.slice(0, 2), MOCK_SHADOW_STACK_MODE_CHOICE, ...MOCK_STACK_MODE_CHOICES.slice(2)]
+                    : MOCK_STACK_MODE_CHOICES,
                 backendRunModes: MOCK_BACKEND_RUN_MODE_CHOICES,
                 existingServerModes: MOCK_EXISTING_SERVER_CHOICES,
+                visualStudioAvailable: true,
             },
         });
     }
