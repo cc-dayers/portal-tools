@@ -7,7 +7,7 @@ import { PassThrough, Writable } from 'node:stream';
 
 import { runPortalConfigTui } from './config-tui.mjs';
 import { runPortalDashboard } from './dashboard-tui.mjs';
-import { PROTOCOL, PROTOCOL_VERSION, connectToLauncherHost } from '@cc-dayers/portal-protocol';
+import { PROTOCOL, PROTOCOL_VERSION, connectToLauncherHost, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
 
 import { createDashboardLauncherAdapter } from './dashboard-adapter.mjs';
 import { runSelfUpdate } from './self-update.mjs';
@@ -89,6 +89,14 @@ export function toLauncherSelection(config) {
         verbose: config?.verbose ?? false,
         autoOpen: config?.autoOpen ?? true,
     };
+}
+
+// Visual Studio is offered when adding a backend only if it is installed and the launched
+// environment supports it (the host rejects it otherwise).
+export function canAddVisualStudioBackend(session, launchPayload) {
+    const stackMode = launchPayload?.selection?.stackMode ?? session?.initialSelection?.stackMode;
+    return session?.choices?.visualStudioAvailable !== false &&
+        stackModeSupportsVisualStudio(session?.choices?.stackModes, stackMode);
 }
 
 export async function run(args = process.argv.slice(2)) {
@@ -202,6 +210,7 @@ export async function run(args = process.argv.slice(2)) {
                 logPath: session.logPath,
                 backendChoices: session.choices?.backendModules ?? [],
                 canAddBackend: client.hello?.capabilities?.commands?.includes('backend.add') ?? false,
+                canUseVisualStudio: canAddVisualStudioBackend(session, launchPayload),
             },
             launchPortals: createDashboardLauncherAdapter(client, launchPayload),
                 ...terminal,

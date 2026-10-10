@@ -4,6 +4,7 @@ import { expect, test, vi } from 'vitest';
 import {
     getDashboardLayoutMode,
     getDashboardRowBudget,
+    getAddBackendRunModeChoices,
     getAvailableBackendChoices,
     getVisibleLogRows,
     getVisibleTargetWindow,
@@ -17,6 +18,11 @@ test('add-backend choices exclude modules already present in the dashboard', () 
     )).toEqual([{ value: 'appointments', label: 'Appointments' }]);
 });
 
+
+test('add-backend run modes offer Visual Studio only when it can be used', () => {
+    expect(getAddBackendRunModeChoices().map((choice) => choice.value)).toEqual(['background', 'vs']);
+    expect(getAddBackendRunModeChoices(false).map((choice) => choice.value)).toEqual(['background']);
+});
 
 test('dashboard layout keeps a short standard-width terminal usable', () => {
     expect(getDashboardLayoutMode(116, 17)).toBe('compact');

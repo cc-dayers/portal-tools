@@ -3,6 +3,7 @@ import { expect, test } from 'vitest';
 import path from 'node:path';
 
 import {
+    canAddVisualStudioBackend,
     createPerformanceTerminal,
     findLauncherHost,
     isReadySnapshot,
@@ -142,4 +143,22 @@ test('toLauncherSelection restores the wizard stack mode', () => {
         verbose: false,
         autoOpen: true,
     });
+});
+
+test('adding a Visual Studio backend follows the launched environment and installation', () => {
+    const stackModes = [
+        { value: 'fullstack-local-db' },
+        { value: 'fullstack-shadow-db', supportsVisualStudio: false },
+    ];
+    const session = (stackMode, visualStudioAvailable = true) => ({
+        choices: { stackModes, visualStudioAvailable },
+        initialSelection: { stackMode },
+    });
+
+    expect(canAddVisualStudioBackend(session('fullstack-local-db'), { source: 'saved' })).toBe(true);
+    expect(canAddVisualStudioBackend(session('fullstack-shadow-db'), { source: 'saved' })).toBe(false);
+    expect(canAddVisualStudioBackend(session('fullstack-local-db', false), { source: 'saved' })).toBe(false);
+    // A selection made in the configuration TUI wins over the saved one.
+    expect(canAddVisualStudioBackend(session('fullstack-local-db'),
+        { source: 'selection', selection: { stackMode: 'fullstack-shadow-db' } })).toBe(false);
 });

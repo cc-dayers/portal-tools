@@ -63,6 +63,12 @@ export function getAvailableBackendChoices(choices, targets) {
     return (choices ?? []).filter(choice => !running.has(choice.value));
 }
 
+export function getAddBackendRunModeChoices(canUseVisualStudio = true) {
+    return canUseVisualStudio
+        ? [{ value: 'background', label: 'Background' }, { value: 'vs', label: 'Visual Studio' }]
+        : [{ value: 'background', label: 'Background' }];
+}
+
 export async function runPortalDashboard({
     launchOptions,
     launchPortals,
@@ -138,6 +144,7 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
     );
     const isShuttingDown = shutdownRequested || snapshot.isShuttingDown;
     const availableBackends = getAvailableBackendChoices(launchOptions?.backendChoices, targets);
+    const runModeChoices = getAddBackendRunModeChoices(launchOptions?.canUseVisualStudio);
 
     const updateSnapshot = useCallback((value) => {
         try {
@@ -380,7 +387,7 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
             const choices = addBackend.step === 'module'
                 ? availableBackends
                 : addBackend.step === 'mode'
-                  ? [{ value: 'background', label: 'Background' }, { value: 'vs', label: 'Visual Studio' }]
+                  ? runModeChoices
                   : [{ value: false, label: 'No hot reload' }, { value: true, label: 'Enable hot reload' }];
             if (key.escape || input === 'q') { setAddBackend(null); return; }
             if (key.upArrow) { setAddBackend(current => ({ ...current, index: (current.index - 1 + choices.length) % choices.length })); return; }
@@ -388,7 +395,10 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
             if (key.return && choices.length) {
                 const choice = choices[addBackend.index];
                 if (addBackend.step === 'module') {
-                    setAddBackend({ step: 'mode', index: 0, module: choice.value, moduleLabel: choice.label });
+                    // With Background as the only run mode, go straight to the hot reload choice.
+                    setAddBackend(runModeChoices.length > 1
+                        ? { step: 'mode', index: 0, module: choice.value, moduleLabel: choice.label }
+                        : { step: 'watch', index: 0, module: choice.value, moduleLabel: choice.label, runMode: 'background' });
                 } else if (addBackend.step === 'mode') {
                     if (choice.value === 'vs') {
                         invokeController(`Adding ${addBackend.moduleLabel}`, 'addBackend', { module: addBackend.module, runMode: 'vs', watch: false });
@@ -485,7 +495,7 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
                           ? h(AddBackendPanel, { state: addBackend, choices: addBackend.step === 'module'
                                 ? availableBackends
                                 : addBackend.step === 'mode'
-                                  ? [{ value: 'background', label: 'Background' }, { value: 'vs', label: 'Visual Studio' }]
+                                  ? runModeChoices
                                   : [{ value: false, label: 'No hot reload' }, { value: true, label: 'Enable hot reload' }] })
                           : activeTab === 'dashboard'
                           ? h(DashboardView, {
