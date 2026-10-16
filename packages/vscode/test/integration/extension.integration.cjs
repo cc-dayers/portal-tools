@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const vscode = require('vscode');
+const path = require('node:path');
 
 const EXTENSION_ID = 'cc-dayers.cc-portal-launcher-vscode';
 
@@ -42,6 +43,15 @@ describe('Portal Launcher extension', () => {
         } finally {
             await config.update('presets.displayMode', previous, vscode.ConfigurationTarget.Global);
         }
+    });
+
+    it('runs host-provided setup in a real terminal task and observes process completion', async () => {
+        const { runSetupTask } = require(path.join(extension.extensionPath, extension.packageJSON.main));
+        const terminal = { command: 'node', args: ['-e', 'console.log("Mock setup complete")'], cwd: extension.extensionPath };
+        assert.equal(await runSetupTask(terminal), true);
+        assert.equal(await runSetupTask({ ...terminal, args: ['-e', 'process.exit(1)'] }), false);
+        assert.equal(extension.exports.phase, 'idle');
+        assert.equal(extension.exports.snapshot, null);
     });
 
     it('launches the saved configuration, reaches ready, and returns to idle after Stop All', async () => {

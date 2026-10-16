@@ -41,6 +41,17 @@ backend as a card with live status and the actions that state allows.
 The extension activates only when its view is opened, starts no processes until
 you launch, and requires a trusted workspace.
 
+### Shadow DB Setup
+
+With a launcher host advertising `setup.check`, missing Shadow DB prerequisites
+are detected before targets start. Choose **Open Setup** to run the launcher's
+existing setup flow in an integrated terminal. Installation still requires your
+confirmation there; package licenses and administrator prompts are not bypassed.
+After successful setup, the host refreshes its environment and rechecks the tools
+before the requested launch continues. Cancelling leaves targets unstarted.
+If setup fails or requires a restart, resolve it in the terminal and launch again.
+Older hosts retain their existing launch behavior.
+
 ## Installing
 
 Download `cc-portal-launcher-vscode.vsix` from a `vscode-v*` release on the

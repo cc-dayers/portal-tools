@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import * as vscode from 'vscode';
 
-import { connectToLauncherHost, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
+import { connectToLauncherHost, ensureLauncherSetup, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
 import * as model from './launcher-model.mjs';
 
 const CLIENT_INFO = { name: 'cc-portals-vscode', version: '0.0.1' };
@@ -24,6 +24,35 @@ const WEBVIEW_COMMANDS = new Set([
 ]);
 
 let activeSession;
+
+export async function runSetupTask(terminal) {
+    if (!terminal?.command || !Array.isArray(terminal.args) || !terminal.cwd) {
+        throw new Error('The launcher did not provide a setup terminal command.');
+    }
+    const definition = { type: 'ccPortalLauncherSetup', setupId: crypto.randomUUID() };
+    const task = new vscode.Task(
+        definition, vscode.TaskScope.Workspace, 'Launcher prerequisite setup', 'Portal Launcher',
+        new vscode.ProcessExecution(terminal.command, terminal.args, { cwd: terminal.cwd }),
+        [],
+    );
+    task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, focus: true };
+    let resolveCompleted;
+    const completed = new Promise((resolve) => { resolveCompleted = resolve; });
+    const matches = (event) => event.execution.task.definition.setupId === definition.setupId;
+    const processListener = vscode.tasks.onDidEndTaskProcess((event) => {
+        if (matches(event)) resolveCompleted(event.exitCode === 0);
+    });
+    const taskListener = vscode.tasks.onDidEndTask((event) => {
+        if (matches(event)) resolveCompleted(false);
+    });
+    try {
+        await vscode.tasks.executeTask(task);
+        return await completed;
+    } finally {
+        processListener.dispose();
+        taskListener.dispose();
+    }
+}
 
 export async function activate(context) {
     const output = vscode.window.createOutputChannel('CareContinuity Portal Launcher', { log: true });
@@ -131,11 +160,27 @@ export async function activate(context) {
                     : model.resolvePresetSelection(selection, session.client.session?.choices);
                     const summary = model.selectionSummary(resolved, session.client.session?.choices);
                     const launchName = name || summary || 'Last launch';
+            const payload = source === 'saved' ? { source: 'saved' } : { source: 'selection', selection: resolved };
+            const ready = await ensureLauncherSetup(session.client, payload, async (setup) => {
+                output.info(setup.guide || 'Launcher setup is required.');
+                const choice = await vscode.window.showWarningMessage(
+                    `Launcher setup needs: ${(setup.missing ?? []).map((tool) => tool.name).join(', ')}. Open setup in a terminal? Installation requires your confirmation.`,
+                    { modal: true, detail: setup.guide },
+                    'Open Setup',
+                );
+                if (choice !== 'Open Setup') return false;
+                return runSetupTask(setup.terminal);
+            });
+            if (!ready) {
+                disconnectIdle(session);
+                setPhase('idle', { snapshot: null, selection: null, sessionName: '', error: null });
+                return;
+            }
             session.launched = true;
                     setPhase('launching', { selection: structuredClone(resolved ?? null), sessionName: launchName });
             await session.client.request(
                 'command.launch',
-                source === 'saved' ? { source: 'saved' } : { source: 'selection', selection: resolved },
+                payload,
             );
             setPhase('running');
             await setUsage(model.recordUse(getUsage(), presetId, Date.now(), { name: launchName, summary }));

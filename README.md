@@ -60,6 +60,16 @@ may stay in v1. Breaking changes need a new protocol version and coordinated
 changes in both repositories. Keep the mock host in `packages/protocol` aligned
 with the real host.
 
+Hosts may advertise the optional `setup.check` command. Clients send
+`command.setup.check` with the same `{ source: 'saved' }` or
+`{ source: 'selection', selection }` payload as `command.launch`. This check
+does not save configuration or start targets. Its response is `{ ready: true }`
+or `{ ready: false, missing, guide, terminal: { command, args, cwd } }`.
+Clients run the host-provided terminal command only after user consent and
+recheck setup after it succeeds, before sending `command.launch`. Checks may
+take up to two minutes; the interactive installer is not a timed protocol
+request. Clients skip preflight for hosts without this capability.
+
 ## Developing
 
 Node.js 22 and the Yarn version pinned in `package.json` are required.

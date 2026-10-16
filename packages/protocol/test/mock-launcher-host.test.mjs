@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { expect, test } from 'vitest';
 
-import { createProtocolClient } from '../src/protocol-client.mjs';
+import { createProtocolClient, ensureLauncherSetup } from '../src/protocol-client.mjs';
 
 const HOST_SCRIPT = fileURLToPath(new URL('../src/mock-launcher-host.mjs', import.meta.url));
 
@@ -31,6 +31,27 @@ test('mock host speaks a real cc.portals.launcher v1 handshake', async () => {
     await client.shutdown('quit', 'test complete');
     await client.exitPromise;
     child.kill();
+});
+
+test('mock host simulates missing prerequisites and a successful setup recheck', async () => {
+    const child = spawnMockHost(['--setup-required']);
+    const client = createProtocolClient({ input: child.stdout, output: child.stdin, errorInput: child.stderr });
+    try {
+        await client.connect();
+        let prompted = false;
+        expect(await ensureLauncherSetup(client, { source: 'saved' }, async (setup) => {
+            prompted = true;
+            expect(setup.missing[0].name).toBe('Podman');
+            expect(setup.terminal.command).toBe(process.execPath);
+            expect(client.lastSnapshot).toBe(null);
+            return true;
+        })).toBe(true);
+        expect(prompted).toBe(true);
+        await client.shutdown('quit', 'setup test complete');
+    } finally {
+        client.close();
+        child.kill();
+    }
 });
 
 test('mock host runs the happy-path launch scenario to ready', async () => {

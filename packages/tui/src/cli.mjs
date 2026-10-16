@@ -1,13 +1,12 @@
-#!/usr/bin/env node
-
 import process from 'node:process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
+import { spawn } from 'node:child_process';
 
 import { runPortalConfigTui } from './config-tui.mjs';
 import { runPortalDashboard } from './dashboard-tui.mjs';
-import { PROTOCOL, PROTOCOL_VERSION, connectToLauncherHost, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
+import { PROTOCOL, PROTOCOL_VERSION, connectToLauncherHost, ensureLauncherSetup, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
 
 import { createDashboardLauncherAdapter } from './dashboard-adapter.mjs';
 import { runSelfUpdate } from './self-update.mjs';
@@ -18,6 +17,36 @@ const CLIENT_NAME = 'cc-portals-tui';
 const HOST_RELATIVE_PATH = path.join('Portals', 'scripts', 'portal-launcher-host.mjs');
 // Launcher flags the host understands; they may be given directly instead of after `--`.
 const HOST_FLAGS = new Set(['--config', '--reset', '--setup', '-c', '--verbose', '-v', '--debug']);
+
+export async function prepareTuiLaunch(client, payload, {
+    interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    stdin = process.stdin,
+    stdout = process.stdout,
+    spawnProcess = spawn,
+} = {}) {
+    return ensureLauncherSetup(client, payload, async (setup) => {
+        if (!interactive) throw new Error(setup.guide || 'Launcher setup requires an interactive terminal.');
+        const terminal = setup.terminal;
+        if (!terminal?.command || !Array.isArray(terminal.args) || !terminal.cwd) {
+            throw new Error('The launcher did not provide a setup terminal command.');
+        }
+        stdout.write(`${setup.guide || 'Launcher setup is required.'}\n`);
+        const wasRaw = stdin.isRaw;
+        const wasPaused = stdin.isPaused();
+        if (wasRaw) stdin.setRawMode(false);
+        stdin.pause();
+        try {
+            return await new Promise((resolve, reject) => {
+                const child = spawnProcess(terminal.command, terminal.args, { cwd: terminal.cwd, stdio: 'inherit', windowsHide: false });
+                child.once('error', reject);
+                child.once('exit', (code) => resolve(code === 0));
+            });
+        } finally {
+            if (wasRaw) stdin.setRawMode(true);
+            if (!wasPaused) stdin.resume();
+        }
+    });
+}
 
 export function parseCliArgs(args) {
     const hostIndex = args.indexOf('--host');
@@ -187,6 +216,12 @@ export async function run(args = process.argv.slice(2)) {
                 source: 'selection',
                 selection: toLauncherSelection(selectedConfig),
             };
+        }
+
+        if (!await prepareTuiLaunch(client, launchPayload, {
+            interactive: parsed.performanceSteadyMs == null && Boolean(process.stdin.isTTY && process.stdout.isTTY),
+        })) {
+            return await client.shutdown('cancel', 'prerequisite setup cancelled');
         }
 
         let performanceTimer;

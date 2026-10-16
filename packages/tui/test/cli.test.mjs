@@ -1,4 +1,5 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 
 import path from 'node:path';
 
@@ -10,7 +11,59 @@ import {
     parseCliArgs,
     toLauncherSelection,
     writePerformanceState,
+    prepareTuiLaunch,
 } from '../src/cli.mjs';
+
+test('TUI yields the terminal for host-owned setup, restores input, and rechecks', async () => {
+    const stdin = { isRaw: true, isPaused: () => false, setRawMode: vi.fn(), pause: vi.fn(), resume: vi.fn() };
+    const client = {
+        hello: { capabilities: { commands: ['setup.check'] } },
+        request: vi.fn().mockResolvedValueOnce({ ready: false, guide: 'Install Podman', terminal: {
+            command: 'node', args: ['/app/setup.mjs', '--setup'], cwd: '/app',
+        } }).mockResolvedValueOnce({ ready: true }),
+    };
+    const spawnProcess = vi.fn(() => {
+        expect(stdin.pause).toHaveBeenCalled();
+        expect(stdin.setRawMode).toHaveBeenCalledWith(false);
+        const child = new EventEmitter();
+        queueMicrotask(() => child.emit('exit', 0));
+        return child;
+    });
+    expect(await prepareTuiLaunch(client, { source: 'saved' }, {
+        interactive: true, stdin, stdout: { write: vi.fn() }, spawnProcess,
+    })).toBe(true);
+    expect(spawnProcess).toHaveBeenCalledWith('node', ['/app/setup.mjs', '--setup'], { cwd: '/app', stdio: 'inherit', windowsHide: false });
+    expect(stdin.setRawMode).toHaveBeenLastCalledWith(true);
+    expect(stdin.resume).toHaveBeenCalledOnce();
+    expect(client.request).toHaveBeenCalledTimes(2);
+});
+
+test('TUI setup cancellation does not permit launch and restores input after spawn failure', async () => {
+    const stdin = { isRaw: false, isPaused: () => true, pause: vi.fn(), resume: vi.fn() };
+    const client = {
+        hello: { capabilities: { commands: ['setup.check'] } },
+        request: vi.fn().mockResolvedValue({ ready: false, guide: 'Install Podman', terminal: { command: 'node', args: [], cwd: '/app' } }),
+    };
+    const options = { interactive: true, stdin, stdout: { write() {} }, spawnProcess: () => {
+        const child = new EventEmitter();
+        queueMicrotask(() => child.emit('exit', 1));
+        return child;
+    } };
+    expect(await prepareTuiLaunch(client, {}, options)).toBe(false);
+    expect(client.request).toHaveBeenCalledTimes(1);
+    expect(stdin.resume).not.toHaveBeenCalled();
+    await expect(prepareTuiLaunch(client, {}, { ...options, spawnProcess: () => { throw new Error('Cannot open setup'); } })).rejects.toThrow('Cannot open setup');
+});
+
+test('headless TUI reports prerequisites without attempting installation', async () => {
+    const client = {
+        hello: { capabilities: { commands: ['setup.check'] } },
+        request: vi.fn().mockResolvedValue({ ready: false, guide: 'Install Podman' }),
+    };
+    const spawnProcess = vi.fn();
+    await expect(prepareTuiLaunch(client, {}, { interactive: false, spawnProcess })).rejects.toThrow('Install Podman');
+    expect(spawnProcess).not.toHaveBeenCalled();
+});
 
 test('parseCliArgs separates the host script from forwarded launcher flags', () => {
     expect(

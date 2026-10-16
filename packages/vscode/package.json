@@ -2,7 +2,7 @@
     "name": "cc-portal-launcher-vscode",
     "displayName": "CareContinuity Portal Launcher (Experimental)",
     "description": "VS Code dashboard for the CareContinuity portal launcher.",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "private": true,
     "publisher": "cc-dayers",
     "icon": "resources/icon.png",

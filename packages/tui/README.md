@@ -25,6 +25,17 @@ While the dashboard is running, press `a` to add a backend module without
 restarting the session. The host offers background or Visual Studio execution,
 and hot reload where the chosen mode supports it.
 
+### Shadow DB Setup
+
+With a launcher host advertising `setup.check`, prerequisites are checked before
+the dashboard starts. Missing tools open the launcher's setup flow in your terminal;
+installation requires explicit confirmation, and licenses and administrator prompts
+remain interactive. After successful setup, the host refreshes its environment and
+rechecks prerequisites before launching. Declining or cancelling starts no targets.
+If setup fails or needs a restart, resolve it and run the TUI again. Noninteractive
+performance runs report the setup guide without installing anything. Older hosts
+retain their existing launch behavior.
+
 ## Developing
 
 Run these from `packages/tui`. The mock host in `packages/protocol` lets you

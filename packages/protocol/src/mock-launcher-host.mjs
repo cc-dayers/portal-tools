@@ -102,6 +102,7 @@ export function createMockLauncherHost({
     let inputBuffer = '';
     let handshakeComplete = false;
     let launched = false;
+    let setupChecked = false;
     let finished = false;
     let timers = [];
     let resolveDone;
@@ -298,6 +299,23 @@ export function createMockLauncherHost({
         }
 
         switch (message.type) {
+            case 'command.setup.check':
+                if (cliArgs.has('--setup-required') && !setupChecked) {
+                    setupChecked = true;
+                    send('response.ok', {
+                        ready: false,
+                        missing: [{ id: 'engine', name: 'Podman', purpose: 'mock container engine' }],
+                        guide: 'Mock launcher setup: no software will be installed.',
+                        terminal: {
+                            command: process.execPath,
+                            args: ['-e', 'console.log("Mock prerequisites are ready.")'],
+                            cwd: process.cwd(),
+                        },
+                    }, message.requestId);
+                } else {
+                    send('response.ok', { ready: true }, message.requestId);
+                }
+                break;
             case 'command.launch':
                 await handleLaunch(message);
                 break;
@@ -351,6 +369,7 @@ export function createMockLauncherHost({
         authority: { name: 'mock-portals-launcher', pid: process.pid, nodeVersion: process.versions.node },
         capabilities: {
             commands: [
+                'setup.check',
                 'launch',
                 'target.start',
                 'target.stop',

@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
     provider: null,
     pickers: [],
     finish: null,
+    executeTask: vi.fn(),
+    taskProcessEnd: null,
+    taskEnd: null,
 }));
 
 vi.mock('vscode', () => ({
@@ -24,6 +27,16 @@ vi.mock('vscode', () => ({
     ExtensionMode: { Development: 2, Test: 3 },
     QuickPickItemKind: { Separator: -1 },
     QuickInputButtons: { Back: {} },
+    TaskScope: { Workspace: 2 },
+    TaskRevealKind: { Always: 1 },
+    TaskPanelKind: { Dedicated: 2 },
+    Task: class { constructor(definition, scope, name, source, execution) { Object.assign(this, { definition, scope, name, source, execution }); } },
+    ProcessExecution: class { constructor(command, args, options) { Object.assign(this, { command, args, options }); } },
+    tasks: {
+        executeTask: mocks.executeTask,
+        onDidEndTaskProcess: (handler) => { mocks.taskProcessEnd = handler; return { dispose() {} }; },
+        onDidEndTask: (handler) => { mocks.taskEnd = handler; return { dispose() {} }; },
+    },
     Uri: { joinPath: (base, ...parts) => ({ fsPath: `${base.fsPath}/${parts.join('/')}` }) },
     commands: {
         executeCommand: mocks.executeCommand,
@@ -164,6 +177,49 @@ describe('preset settings and actions', () => {
     afterEach(async () => {
         await deactivate();
         for (const subscription of context.subscriptions) subscription.dispose();
+    });
+
+    test('missing prerequisites open a process task, recheck, then launch', async () => {
+        client.hello = { capabilities: { commands: ['setup.check'] } };
+        client.request.mockResolvedValueOnce({ ready: false, missing: [{ name: 'Podman' }], guide: 'Install Podman',
+            terminal: { command: 'node', args: ['/app/setup.mjs', '--setup'], cwd: '/app' } })
+            .mockResolvedValueOnce({ ready: true }).mockResolvedValue({});
+        mocks.warning.mockResolvedValueOnce('Open Setup');
+        mocks.executeTask.mockImplementation(async (task) => {
+            expect(client.request.mock.calls.map(([type]) => type)).toEqual(['command.setup.check']);
+            expect(task.execution).toMatchObject({ command: 'node', args: ['/app/setup.mjs', '--setup'], options: { cwd: '/app' } });
+            mocks.taskProcessEnd({ execution: { task }, exitCode: 0 });
+            return { task };
+        });
+        await mocks.commands.get('ccPortalLauncher.launchSaved')();
+        expect(client.request.mock.calls.map(([type]) => type)).toEqual(['command.setup.check', 'command.setup.check', 'command.launch']);
+        expect(api.phase).toBe('running');
+    });
+
+    test('cancelling prerequisite setup leaves targets unstarted and preserves history', async () => {
+        client.hello = { capabilities: { commands: ['setup.check'] } };
+        client.request.mockResolvedValue({ ready: false, missing: [{ name: 'Podman' }] });
+        mocks.warning.mockResolvedValueOnce(undefined);
+        const usage = structuredClone(storage.get('ccPortalLauncher.usage'));
+        await mocks.commands.get('ccPortalLauncher.launchSaved')();
+        expect(client.request.mock.calls.map(([type]) => type)).toEqual(['command.setup.check']);
+        expect(mocks.executeTask).not.toHaveBeenCalled();
+        expect(api.phase).toBe('idle');
+        expect(storage.get('ccPortalLauncher.usage')).toEqual(usage);
+    });
+
+    test('a failed or terminated setup task leaves the extension idle without launching', async () => {
+        client.hello = { capabilities: { commands: ['setup.check'] } };
+        client.request.mockResolvedValue({ ready: false, missing: [{ name: 'Podman' }],
+            terminal: { command: 'node', args: ['setup'], cwd: '/app' } });
+        mocks.warning.mockResolvedValueOnce('Open Setup');
+        mocks.executeTask.mockImplementation(async (task) => {
+            mocks.taskProcessEnd({ execution: { task }, exitCode: undefined });
+            return { task };
+        });
+        await mocks.commands.get('ccPortalLauncher.launchSaved')();
+        expect(client.request.mock.calls.map(([type]) => type)).toEqual(['command.setup.check']);
+        expect(api.phase).toBe('idle');
     });
 
     test('keeps the native title and a centered 32px colored logo before the dashboard', () => {

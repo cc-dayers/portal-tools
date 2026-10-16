@@ -13,6 +13,18 @@ export function stackModeSupportsVisualStudio(stackModeChoices, stackMode) {
     return stackModeChoices?.find((choice) => choice.value === stackMode)?.supportsVisualStudio !== false;
 }
 
+export async function ensureLauncherSetup(client, launchPayload, runSetup) {
+    if (!client.hello?.capabilities?.commands?.includes('setup.check')) return true;
+    const check = () => client.request('command.setup.check', launchPayload, { timeoutMs: 120_000 });
+    const setup = await check();
+    if (setup.ready === true) return true;
+    if (setup.ready !== false) throw new Error('The launcher returned an invalid setup response.');
+    if (!await runSetup(setup)) return false;
+    const result = await check();
+    if (result.ready !== true) throw new Error(result.guide || 'Launcher prerequisites are still missing. Run setup, then try launching again.');
+    return true;
+}
+
 export async function connectToLauncherHost({
     hostPath,
     hostArgs = [],
@@ -78,7 +90,7 @@ export function createProtocolClient({
         rejectSession = reject;
     });
 
-    function send(type, payload = {}) {
+    function send(type, payload = {}, { timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
         if (closed || output.destroyed || output.writableEnded) {
             return Promise.reject(new Error('Portal launcher connection is closed.'));
         }
@@ -96,7 +108,7 @@ export function createProtocolClient({
             const timer = setTimeout(() => {
                 pending.delete(requestId);
                 reject(new Error(`Timed out waiting for ${type}.`));
-            }, REQUEST_TIMEOUT_MS);
+            }, timeoutMs);
             pending.set(requestId, { resolve, reject, timer });
             output.write(`${JSON.stringify(message)}\n`);
         });
