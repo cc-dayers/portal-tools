@@ -28,6 +28,17 @@ describe('Portal Launcher extension', () => {
         assert.equal(extension.exports.snapshot, null);
     });
 
+    it('registers the update action and has access to the native VSIX installer', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('ccPortalLauncher.checkForUpdates'));
+        assert.ok(commands.includes('workbench.extensions.installExtension'));
+        assert.ok(extension.packageJSON.contributes.commands.some(
+            (command) => command.command === 'ccPortalLauncher.checkForUpdates',
+        ));
+        assert.equal(extension.exports.phase, 'idle');
+        assert.equal(extension.exports.snapshot, null);
+    });
+
     it('reads compact/full display from VS Code user settings without launching', async () => {
         await vscode.commands.executeCommand('ccPortalLauncher.showSettings');
         assert.equal(extension.exports.phase, 'idle');

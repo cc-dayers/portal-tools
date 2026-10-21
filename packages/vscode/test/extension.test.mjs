@@ -179,6 +179,11 @@ describe('preset settings and actions', () => {
         for (const subscription of context.subscriptions) subscription.dispose();
     });
 
+    test('registers the update command without contacting the launcher', () => {
+        expect(mocks.commands.get('ccPortalLauncher.checkForUpdates')).toBeTypeOf('function');
+        expect(mocks.connect).not.toHaveBeenCalled();
+    });
+
     test('missing prerequisites open a process task, recheck, then launch', async () => {
         client.hello = { capabilities: { commands: ['setup.check'] } };
         client.request.mockResolvedValueOnce({ ready: false, missing: [{ name: 'Podman' }], guide: 'Install Podman',

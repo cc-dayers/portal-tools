@@ -38,6 +38,11 @@ code --install-extension cc-portal-launcher-vscode.vsix
 Open `carecontinuity.app` in VS Code and choose **Portal Launcher** in the
 Activity Bar.
 
+For subsequent updates, run **Portal Launcher: Check for Updates** from the
+Command Palette or the dashboard's **...** menu, then confirm installation.
+See the [extension update guide](packages/vscode/README.md#updating) for details
+and how this differs from Marketplace automatic updates.
+
 ## Repository boundary
 
 This repository owns presentation, interaction, the protocol client, the mock

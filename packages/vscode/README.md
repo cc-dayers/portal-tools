@@ -38,8 +38,8 @@ backend as a card with live status and the actions that state allows.
 - The Activity Bar badge counts failed targets, and logs go to the
   **CareContinuity Portal Launcher** output channel.
 
-The extension activates only when its view is opened, starts no processes until
-you launch, and requires a trusted workspace.
+The extension activates when its view is opened or one of its commands is run,
+starts no launcher processes until you launch, and requires a trusted workspace.
 
 ### Shadow DB Setup
 
@@ -57,6 +57,31 @@ Older hosts retain their existing launch behavior.
 Download `cc-portal-launcher-vscode.vsix` from a `vscode-v*` release on the
 [releases page](https://github.com/cc-dayers/portal-tools/releases), then run
 `code --install-extension cc-portal-launcher-vscode.vsix`.
+
+### Updating
+
+Run **Portal Launcher: Check for Updates** from the Command Palette, or choose
+**Check for Updates** in the dashboard title bar's **...** menu. The extension
+checks the public GitHub releases for the highest stable `vscode-v*` version,
+ignoring TUI releases, drafts, and prereleases. It never downgrades your installation.
+Confirm **Install Update** to download the official VSIX and hand it to VS Code's
+native extension installer. Downloads are size-checked and their GitHub SHA-256
+digest is verified when supplied. Network, rate-limit, download, and installation
+errors are shown explicitly; details are also written to the launcher output channel.
+No GitHub login or token is needed for this public repository.
+
+Checking is manual: no background polling, automatic installation, or forced
+window reload is performed. If VS Code requests a reload, finish your launcher
+session first, because a reload stops it. An older installation must be updated
+manually once to a release containing this command.
+
+VS Code's [standard automatic updates](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#_extension-auto-update)
+use the Visual Studio Marketplace, not GitHub releases, and VSIX installations
+have auto-update disabled by default. Publishing this same extension identity
+(`cc-dayers.cc-portal-launcher-vscode`) to the Marketplace would enable that
+preferred flow; users would then install it from the Marketplace and enable
+auto-update there. This repository currently distributes GitHub VSIX releases
+only; the update command does not change VS Code's global update settings.
 
 ## Developing
 

@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { connectToLauncherHost, ensureLauncherSetup, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
 import * as model from './launcher-model.mjs';
+import { createUpdateCommand } from './extension-updates.mjs';
 
 const CLIENT_INFO = { name: 'cc-portals-vscode', version: '0.0.1' };
 const HOST_RELATIVE_PATH = path.join('Portals', 'scripts', 'portal-launcher-host.mjs');
@@ -390,6 +391,7 @@ export async function activate(context) {
         addBackend,
         savePreset: saveRunningPreset,
         showLogs: () => output.show(),
+        checkForUpdates: createUpdateCommand(context, output),
     };
     // Invoked from native webview/context menus; VS Code passes the element's data-vscode-context as the argument.
     const contextCommands = {
@@ -816,4 +818,3 @@ async function shutdownActiveSession(reason) {
 function setSessionContext(value) {
     return vscode.commands.executeCommand('setContext', 'ccPortalLauncher.session', value);
 }
-

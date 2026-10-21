@@ -2,7 +2,7 @@
     "name": "cc-portal-launcher-vscode",
     "displayName": "CareContinuity Portal Launcher (Experimental)",
     "description": "VS Code dashboard for the CareContinuity portal launcher.",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "private": true,
     "publisher": "cc-dayers",
     "icon": "resources/icon.png",
@@ -49,6 +49,11 @@
             }
         },
         "commands": [
+            {
+                "command": "ccPortalLauncher.checkForUpdates",
+                "title": "Check for Updates",
+                "category": "Portal Launcher"
+            },
             {
                 "command": "ccPortalLauncher.launchSaved",
                 "title": "Launch Saved Configuration",
@@ -171,6 +176,11 @@
         },
         "menus": {
             "view/title": [
+                {
+                    "command": "ccPortalLauncher.checkForUpdates",
+                    "when": "view == ccPortalLauncher.dashboard",
+                    "group": "updates"
+                },
                 {
                     "command": "ccPortalLauncher.showSettings",
                     "when": "view == ccPortalLauncher.dashboard",
@@ -306,7 +316,7 @@
     },
     "scripts": {
         "build": "node esbuild.mjs",
-        "check": "node --check src/extension.mjs && node --check src/launcher-model.mjs && node --check resources/webview/dashboard.js && node --check esbuild.mjs",
+        "check": "node --check src/extension.mjs && node --check src/extension-updates.mjs && node --check src/launcher-model.mjs && node --check resources/webview/dashboard.js && node --check esbuild.mjs",
         "vscode:prepublish": "node esbuild.mjs --production",
         "package": "vsce package --no-dependencies --skip-license",
         "test:integration": "node esbuild.mjs && vscode-test"
