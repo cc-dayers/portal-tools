@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     commands: new Map(),
     executeCommand: vi.fn(),
     connect: vi.fn(),
+    reconnect: vi.fn(),
     createQuickPick: vi.fn(),
     input: vi.fn(),
     information: vi.fn(),
@@ -71,6 +72,7 @@ vi.mock('vscode', () => ({
 vi.mock('@cc-dayers/portal-protocol', async (importOriginal) => ({
     ...(await importOriginal()),
     connectToLauncherHost: mocks.connect,
+    reconnectToLauncherHost: mocks.reconnect,
 }));
 
 import { activate, deactivate } from '../src/extension.mjs';
@@ -157,6 +159,11 @@ describe('preset settings and actions', () => {
                     if (value === undefined) storage.delete(key);
                     else storage.set(key, value);
                 },
+            },
+            secrets: {
+                get: vi.fn(async () => 'test-session-token'),
+                store: vi.fn().mockResolvedValue(undefined),
+                delete: vi.fn().mockResolvedValue(undefined),
             },
         };
         api = await activate(context);
@@ -389,6 +396,91 @@ describe('preset settings and actions', () => {
         expect(api.phase).toBe('running');
     });
 
+    test('detaches on reload and restores authoritative state without launching again', async () => {
+        client.hello = { sessionId: 'persistent-test', capabilities: { persistentSession: true } };
+        await receive({ type: 'preset', presetId: 'daily', action: 'launch' });
+        const reference = storage.get('ccPortalLauncher.session');
+        expect(reference).toMatchObject({ sessionId: 'persistent-test', name: 'Daily' });
+        expect(reference).not.toHaveProperty('token');
+        expect(context.secrets.store).toHaveBeenCalledOnce();
+        expect(context.secrets.store).toHaveBeenCalledWith(
+            'ccPortalLauncher.sessionToken.persistent-test', expect.any(String),
+        );
+        await deactivate();
+        expect(client.shutdown).not.toHaveBeenCalled();
+        expect(client.close).toHaveBeenCalledOnce();
+        expect(storage.get('ccPortalLauncher.session')).toEqual(reference);
+
+        const restoredExit = Promise.withResolvers();
+        const snapshot = { targets: [{ id: 'sso', kind: 'frontend', status: 'ready', openable: true }] };
+        const restored = {
+            ...client,
+            session: { ...client.session, running: true, runningSelection: { ...SELECTION, autoOpen: true } },
+            exitPromise: restoredExit.promise,
+            onState: (listener) => { listener(snapshot); return () => {}; },
+            request: vi.fn().mockResolvedValue({}),
+            close: vi.fn(() => restoredExit.resolve(0)),
+        };
+        mocks.reconnect.mockResolvedValue(restored);
+        const reopened = await activate(context);
+        expect(reopened.phase).toBe('running');
+        expect(reopened.snapshot).toEqual(snapshot);
+        expect(reopened.dashboard.session.name).toBe('Daily');
+        expect(mocks.reconnect).toHaveBeenCalledWith(expect.objectContaining({
+            ...reference, token: 'test-session-token',
+        }));
+        expect(context.secrets.get).toHaveBeenCalledWith('ccPortalLauncher.sessionToken.persistent-test');
+        expect(restored.request).not.toHaveBeenCalled();
+        expect(mocks.connect).toHaveBeenCalledOnce();
+        await mocks.commands.get('ccPortalLauncher.target.stop')({ targetId: 'sso' });
+        expect(restored.request).toHaveBeenCalledWith('command.target.stop', { targetId: 'sso' });
+        restored.sessionEnded = true;
+        restoredExit.resolve(0);
+        await vi.waitFor(() => expect(reopened.phase).toBe('idle'));
+        expect(storage.has('ccPortalLauncher.session')).toBe(false);
+        expect(context.secrets.delete).toHaveBeenCalledWith('ccPortalLauncher.sessionToken.persistent-test');
+    });
+
+    test('a stale connection stays disconnected and cannot silently launch a duplicate', async () => {
+        client.hello = { sessionId: 'persistent-test', capabilities: { persistentSession: true } };
+        await receive({ type: 'command', command: 'launchSaved' });
+        await deactivate();
+        mocks.reconnect.mockRejectedValue(new Error('Connection refused'));
+        const reopened = await activate(context);
+        expect(reopened.phase).toBe('disconnected');
+        expect(reopened.dashboard.error).toBe('Connection refused');
+        await mocks.commands.get('ccPortalLauncher.launchSaved')();
+        expect(mocks.connect).toHaveBeenCalledOnce();
+        expect(reopened.phase).toBe('disconnected');
+        expect(storage.has('ccPortalLauncher.session')).toBe(true);
+        mocks.warning.mockResolvedValueOnce('Forget session');
+        await mocks.commands.get('ccPortalLauncher.forgetSession')();
+        expect(reopened.phase).toBe('idle');
+        expect(storage.has('ccPortalLauncher.session')).toBe(false);
+    });
+
+    test('uncertain launch failure preserves the persistent reference for recovery', async () => {
+        client.hello = { sessionId: 'persistent-test', capabilities: { persistentSession: true } };
+        client.request.mockRejectedValueOnce(new Error('Timed out waiting for command.launch.'));
+        await receive({ type: 'command', command: 'launchSaved' });
+        expect(api.phase).toBe('disconnected');
+        expect(storage.has('ccPortalLauncher.session')).toBe(true);
+        expect(client.close).toHaveBeenCalledOnce();
+        expect(client.shutdown).not.toHaveBeenCalled();
+    });
+
+    test('a connection-storage cleanup error does not leave a stopped session looking live', async () => {
+        client.hello = { sessionId: 'persistent-test', capabilities: { persistentSession: true } };
+        await receive({ type: 'command', command: 'launchSaved' });
+        context.secrets.delete.mockRejectedValueOnce(new Error('Secret storage unavailable'));
+        client.sessionEnded = true;
+        client.close();
+        await vi.waitFor(() => expect(api.phase).toBe('idle'));
+        expect(api.snapshot).toBe(null);
+        expect(api.dashboard.error).toBe('Secret storage unavailable');
+        expect(mocks.error).toHaveBeenCalledWith('Secret storage unavailable');
+    });
+
     test('unnamed saved launches show a host-derived name and retain it after restarting the extension', async () => {
         await receive({ type: 'command', command: 'launchSaved' });
         expect(client.request).toHaveBeenCalledWith('command.launch', { source: 'saved' });
@@ -525,6 +617,18 @@ describe('dashboard settings and action routing', () => {
         expect(app.innerHTML).not.toContain('codicon-settings-gear');
         expect(app.innerHTML).toMatch(/data-command="configure"><i class="codicon codicon-add"/);
         expect(renderDashboard('launching').app.innerHTML).toMatch(/data-command="editSession"[^>]* disabled/);
+    });
+
+    test('a disconnected dashboard offers recovery rather than stale controls or launch actions', () => {
+        const { app, click, messages } = renderDashboard('disconnected');
+        expect(app.innerHTML).toContain('Launcher disconnected');
+        expect(app.innerHTML).toContain('Processes may still be running');
+        expect(app.innerHTML).not.toContain('data-command="stopAll"');
+        expect(app.innerHTML).not.toContain('data-command="launchSaved"');
+        click({ command: 'reconnect' });
+        expect(messages.at(-1)).toEqual({ type: 'command', command: 'reconnect' });
+        click({ command: 'forgetSession' });
+        expect(messages.at(-1)).toEqual({ type: 'command', command: 'forgetSession' });
     });
 
     test.each(['idle', 'launching', 'running'])('title-bar settings navigation preserves display options, cached filters, and back navigation (%s)', (phase) => {

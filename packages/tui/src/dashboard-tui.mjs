@@ -425,6 +425,15 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
             requestShutdown('q');
             return;
         }
+        if (input === 'd' && launchOptions?.canDetach) {
+            if (isShuttingDown || actionBusy || !controllerRef.current) return;
+            setActionBusy('Detaching');
+            Promise.resolve().then(() => controllerRef.current.detach(launchOptions.onDetach)).catch((detachError) => {
+                setActionBusy('');
+                setError(`Unable to detach: ${formatError(detachError)}`);
+            });
+            return;
+        }
         if (key.tab) {
             setActiveTab((current) => (current === 'dashboard' ? 'logs' : 'dashboard'));
             return;
@@ -542,6 +551,7 @@ function PortalDashboardApp({ launchOptions, launchPortals, onExitCode }) {
                       width: terminal.width,
                       layoutMode,
                       canAddBackend: launchOptions?.canAddBackend && availableBackends.length > 0,
+                      canDetach: launchOptions?.canDetach,
                   }),
               ),
     );
@@ -1116,7 +1126,7 @@ function LogRow({ entry, width }) {
     );
 }
 
-function Footer({ activeTab, notice, error, width, layoutMode, canAddBackend }) {
+function Footer({ activeTab, notice, error, width, layoutMode, canAddBackend, canDetach }) {
     const baseControls =
         layoutMode === 'minimal'
             ? activeTab === 'logs'
@@ -1125,7 +1135,8 @@ function Footer({ activeTab, notice, error, width, layoutMode, canAddBackend }) 
             : activeTab === 'logs'
               ? 'Tab/1/2 switch · ↑/↓ PgUp/PgDn scroll · f follow · c clear · q stop'
               : 'Tab/1/2 switch · ↑/↓ select · s start/stop · r restart · o open · q stop all';
-    const controls = activeTab === 'dashboard' && canAddBackend ? `a add backend · ${baseControls}` : baseControls;
+    const backendControls = activeTab === 'dashboard' && canAddBackend ? `a add backend · ${baseControls}` : baseControls;
+    const controls = canDetach ? `d detach · ${backendControls}` : backendControls;
     const controlsWidth = Math.min(controls.length, Math.max(20, Math.floor(width * 0.65)));
     const available = Math.max(5, width - controlsWidth - 6);
 

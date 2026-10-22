@@ -191,3 +191,90 @@ exports[`dashboard at 46x22 renders as expected 1`] = `
  Stopping p…     ↑/↓ select · s stop/start ·…
 "
 `;
+
+exports[`persistent dashboard at 30x9 advertises detach without overflowing 1`] = `
+" CareContinui…       STOPPING
+  1 Dashboard   2 Logs
+──────────────────────────────
+ › SSO         ready
+──────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Stop…   d detach · ↑/↓ sele…
+"
+`;
+
+exports[`persistent dashboard at 30x15 advertises detach without overflowing 1`] = `
+" CareContinui…       STOPPING
+  1 Dashboard   2 Logs
+──────────────────────────────
+ › SSO         ready
+   Provider    ready
+   Coordinator ready
+   Admin       ready
+   Reports     ready
+   Patient     ready
+
+──────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Stop…   d detach · ↑/↓ sele…
+"
+`;
+
+exports[`persistent dashboard at 33x29 advertises detach without overflowing 1`] = `
+" CareContinuit…         STOPPING
+  1 Dashboard   2 Logs
+─────────────────────────────────
+ › SSO            ready
+   Provider       ready
+   Coordinator    ready
+   Admin          ready
+   Reports        ready
+   Patient        ready
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─────────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Stopp…    d detach · ↑/↓ selec…
+"
+`;
+
+exports[`persistent dashboard at 46x22 advertises detach without overflowing 1`] = `
+" CareContinuity Port…                STOPPING
+  1 Dashboard   2 Logs
+──────────────────────────────────────────────
+ › SSO                         ready
+   Provider                    ready
+   Coordinator                 ready
+   Admin                       ready
+   Reports                     ready
+   Patient                     ready
+
+
+
+
+
+
+
+
+──────────────────────────────────────────────
+ SSO  Stop   Restart   Open
+  Restart All   Stop All
+ Stopping p…    d detach · ↑/↓ select · s st…
+"
+`;

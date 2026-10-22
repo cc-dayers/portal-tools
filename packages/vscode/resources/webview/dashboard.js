@@ -217,6 +217,17 @@
     }
 
     function renderSession(state) {
+        if (state.phase === 'disconnected') {
+            return `${errorBanner(state.error)}
+                <div class="panel">
+                    <div class="panel-top"><span class="panel-name">Launcher disconnected</span></div>
+                    <p>Processes may still be running. Reconnect to restore live status and controls.</p>
+                    <div class="row">
+                        ${commandButton('reconnect', 'Reconnect')}
+                        ${commandButton('forgetSession', 'Forget session')}
+                    </div>
+                </div>`;
+        }
         const { session } = state;
         const running = state.phase === 'running' && !session.isShuttingDown;
         const targets = state.groups.flatMap((group) => group.targets);
@@ -245,7 +256,7 @@
                 <div class="segbar" aria-hidden="true">${targets.map((target) => `<i data-s="${escape(target.status)}"></i>`).join('')}</div>
                 <div class="row">
                     ${commandButton('restartAll', 'Restart all', { disabled: !running })}
-                    ${commandButton('stopAll', session.isShuttingDown ? 'Stopping…' : 'Stop all', { disabled: session.isShuttingDown })}
+                    ${commandButton('stopAll', session.isShuttingDown ? 'Stopping…' : 'Stop all', { disabled: !running })}
                 </div>
                 ${busy ? '<span class="bar" aria-hidden="true"></span>' : ''}
             </div>

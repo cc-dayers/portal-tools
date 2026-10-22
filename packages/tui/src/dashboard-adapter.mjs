@@ -12,11 +12,14 @@ export function createDashboardLauncherAdapter(client, launchPayload) {
                 timestamp: Date.now(),
             });
         });
-        const controller = createProtocolController(client);
+        const launchRequest = client.session?.running
+            ? Promise.resolve()
+            : client.request('command.launch', launchPayload);
+        const controller = createProtocolController(client, launchRequest);
         options.onControllerReady(controller);
 
         try {
-            await client.request('command.launch', launchPayload);
+            await launchRequest;
             return await client.exitPromise;
         } finally {
             unsubscribeState();
@@ -26,7 +29,7 @@ export function createDashboardLauncherAdapter(client, launchPayload) {
     };
 }
 
-function createProtocolController(client) {
+function createProtocolController(client, launchRequest) {
     return Object.freeze({
         getSnapshot: () =>
             client.lastSnapshot ?? {
@@ -42,6 +45,11 @@ function createProtocolController(client) {
         open: (targetId) => requestAccepted(client, 'command.target.open', { targetId }),
         addBackend: (request) => requestAccepted(client, 'command.backend.add', request),
         restartAll: () => requestAccepted(client, 'command.session.restart-all'),
+        detach: async (onDetach) => {
+            await launchRequest;
+            onDetach?.();
+            client.close();
+        },
         stopAll: (reason = 'quit') =>
             requestAccepted(client, 'command.session.shutdown', { cause: 'quit', reason }),
     });

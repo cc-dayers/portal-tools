@@ -35,11 +35,27 @@ backend as a card with live status and the actions that state allows.
   preset without stopping the session. Cancelling leaves the session running.
 - **Add backend.** Add a module to a running session in the background, with
   hot reload, or in Visual Studio.
+- **Reload recovery.** With an updated application launcher host, running sessions
+  survive **Developer: Reload Window** and closing VS Code. Opening the dashboard
+  reconnects to the same host and restores its current configuration, live target
+  status, controls, and up to 500 recent log entries without relaunching processes.
+  Use **Stop All** to end the session before closing VS Code if you do not want
+  it to keep running. The connection reference is workspace-specific; its key is
+  held in VS Code SecretStorage.
+- **Disconnected sessions.** If recovery fails, the dashboard offers **Reconnect**
+  instead of treating the session as stopped or launching duplicates. **Forget
+  session** removes only the connection reference after confirmation; it does
+  not stop surviving processes. Stop those separately before launching again.
+  Sessions started before this feature was installed cannot be reattached.
 - The Activity Bar badge counts failed targets, and logs go to the
   **CareContinuity Portal Launcher** output channel.
 
 The extension activates when its view is opened or one of its commands is run,
 starts no launcher processes until you launch, and requires a trusted workspace.
+Older application hosts without the optional `persistentSession` capability keep
+the original shutdown-on-deactivation behavior. The host and extension changes
+must both be installed for reload recovery; this does not recover sessions after
+a computer restart or a launcher-host crash.
 
 ### Shadow DB Setup
 

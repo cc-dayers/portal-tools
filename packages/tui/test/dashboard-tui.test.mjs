@@ -142,6 +142,35 @@ test('dashboard owns launcher output and coordinates shutdown through the contro
     expect(stopAll).toHaveBeenCalledWith('q');
 });
 
+test('persistent dashboard advertises detach and d leaves without stopping portals', async () => {
+    const stdin = createInput();
+    const stdout = createOutput();
+    let rendered = '';
+    stdout.on('data', chunk => { rendered += chunk; });
+    let resolveLauncher;
+    const stopped = vi.fn();
+    const onDetach = vi.fn();
+    const detach = vi.fn((callback) => {
+        callback();
+        resolveLauncher(0);
+    });
+    const promise = runPortalDashboard({
+        launchOptions: { targets: createSnapshot().targets, canDetach: true, onDetach },
+        launchPortals: options => new Promise(resolve => {
+            resolveLauncher = resolve;
+            options.onControllerReady({ getSnapshot: createSnapshot, stopAll: stopped, detach });
+            options.onStateChange(createSnapshot());
+        }),
+        stdin, stdout, stderr: stdout,
+    });
+    await vi.waitFor(() => expect(rendered).toContain('d detach'));
+    stdin.write('d');
+    await expect(promise).resolves.toBe(0);
+    expect(detach).toHaveBeenCalledOnce();
+    expect(onDetach).toHaveBeenCalledOnce();
+    expect(stopped).not.toHaveBeenCalled();
+});
+
 
 test('logs tab renders real log lines on a narrow terminal instead of a static placeholder', async () => {
     const stdin = createInput();

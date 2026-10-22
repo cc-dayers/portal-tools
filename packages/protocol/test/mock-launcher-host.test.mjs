@@ -1,8 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
 import { expect, test } from 'vitest';
 
-import { createProtocolClient, ensureLauncherSetup } from '../src/protocol-client.mjs';
+import { connectToLauncherHost, createProtocolClient, ensureLauncherSetup, reconnectToLauncherHost } from '../src/protocol-client.mjs';
 
 const HOST_SCRIPT = fileURLToPath(new URL('../src/mock-launcher-host.mjs', import.meta.url));
 
@@ -123,5 +126,96 @@ test('mock host offers the shadow DB stack mode only with --shadow-db, like the 
         await client.shutdown('quit', 'test complete');
         await client.exitPromise;
         child.kill();
+    }
+});
+
+test('persistent mock process survives disconnect and restores controls without relaunching', async () => {
+    const endpoint = process.platform === 'win32'
+        ? `\\\\.\\pipe\\cc-portals-process-test-${randomUUID()}`
+        : path.join(os.tmpdir(), `cc-portals-${randomUUID()}.sock`);
+    const token = randomUUID();
+    let client;
+    let reference;
+    try {
+        client = await connectToLauncherHost({
+            hostPath: HOST_SCRIPT, persistentSession: { endpoint, token },
+        });
+        reference = { endpoint, token, sessionId: client.hello.sessionId };
+        const pid = client.hello.authority.pid;
+        await client.request('command.launch', { source: 'selection', selection: {
+            portals: ['coordinator'], stackMode: 'frontend-dev-api', autoOpen: false,
+        } });
+        await waitFor(() => client.lastSnapshot?.targets.every(target => target.status === 'ready'), 5000);
+        client.close();
+        expect(() => process.kill(pid, 0)).not.toThrow();
+        await new Promise(resolve => setTimeout(resolve, 50));
+        client = await reconnectToLauncherHost(reference);
+        expect(client.hello.authority.pid).toBe(pid);
+        expect(client.session).toMatchObject({
+            running: true, runningSelection: { portals: ['coordinator'], stackMode: 'frontend-dev-api' },
+        });
+        expect(client.lastSnapshot.targets).toMatchObject([{ id: 'coordinator', status: 'ready' }]);
+        const logs = [];
+        client.onLog(entry => logs.push(entry));
+        expect(logs.some(entry => entry.line.includes('ready'))).toBe(true);
+        await client.request('command.target.restart', { targetId: 'coordinator' });
+        await expect(client.request('command.launch', { source: 'saved' })).rejects.toThrow('already been launched');
+        await client.shutdown('quit', 'test complete');
+        expect(client.sessionEnded).toBe(true);
+        await new Promise(resolve => setTimeout(resolve, 50));
+        await expect(reconnectToLauncherHost(reference)).rejects.toThrow();
+    } finally {
+        if (client && !client.sessionEnded) {
+            client.close();
+            if (reference) {
+                const cleanup = await reconnectToLauncherHost(reference);
+                await cleanup.shutdown('quit', 'test cleanup');
+            }
+        }
+    }
+});
+
+test('a persistent session survives its client process exiting', async () => {
+    const endpoint = process.platform === 'win32'
+        ? `\\\\.\\pipe\\cc-portals-parent-exit-${randomUUID()}`
+        : path.join(os.tmpdir(), `cc-portals-${randomUUID()}.sock`);
+    const token = randomUUID();
+    const clientModule = new URL('../src/protocol-client.mjs', import.meta.url).href;
+    const script = `
+        import { connectToLauncherHost } from ${JSON.stringify(clientModule)};
+        const client = await connectToLauncherHost({
+            hostPath: ${JSON.stringify(HOST_SCRIPT)},
+            persistentSession: {
+                endpoint: process.env.TEST_SESSION_ENDPOINT,
+                token: process.env.TEST_SESSION_TOKEN,
+            },
+        });
+        await client.request('command.launch', { source: 'saved' });
+        console.log(JSON.stringify({ sessionId: client.hello.sessionId, pid: client.hello.authority.pid }));
+        client.close();
+    `;
+    const driver = spawn(process.execPath, ['--input-type=module', '--eval', script], {
+        env: { ...process.env, TEST_SESSION_ENDPOINT: endpoint, TEST_SESSION_TOKEN: token },
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    driver.stdout.on('data', chunk => { stdout += chunk; });
+    driver.stderr.on('data', chunk => { stderr += chunk; });
+    const code = await new Promise((resolve, reject) => {
+        driver.once('error', reject);
+        driver.once('exit', resolve);
+    });
+    expect(stderr).toBe('');
+    expect(code).toBe(0);
+    const { sessionId, pid } = JSON.parse(stdout);
+    const client = await reconnectToLauncherHost({ endpoint, token, sessionId });
+    try {
+        expect(client.hello.authority.pid).toBe(pid);
+        expect(client.session.running).toBe(true);
+        await waitFor(() => client.lastSnapshot?.targets.every(target => target.status === 'ready'), 5000);
+        await client.shutdown('quit', 'parent exit test complete');
+    } finally {
+        if (!client.sessionEnded) await client.shutdown('quit', 'test cleanup');
     }
 });

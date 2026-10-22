@@ -2,7 +2,8 @@
 
 `cc-portals-tui` talks to whatever launcher host it's pointed at over a
 small newline-JSON protocol (`cc.portals.launcher.v1`) via stdin/stdout of a
-child process — see `packages/protocol/src/protocol-client.mjs`. In production
+child process initially, or an authenticated local pipe/socket when reattaching
+to a persistent session — see `packages/protocol/src/protocol-client.mjs`. In production
 that host is `Portals/scripts/portal-launcher-host.mjs` in carecontinuity.app,
 which spawns real dev servers.
 
@@ -18,6 +19,12 @@ corepack yarn dev:quick    # skips the wizard, uses a canned saved config
 
 Run these from `packages/tui`. Both just run
 `node src/bin.mjs --host ../protocol/src/mock-launcher-host.mjs`.
+
+The mock supports persistence too: press `d` to detach and rerun either command
+to reconnect without launching again. Startup flags such as `--config` apply only
+to new sessions. Press `q` to stop the mock session and clear its stored reference.
+`packages/tui/test/persistence.test.mjs` exercises separate CLI processes,
+including abrupt client termination, under an isolated temporary user profile.
 
 ## Scenarios
 

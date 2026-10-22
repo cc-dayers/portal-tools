@@ -242,7 +242,7 @@ export function buildDashboardView({ phase, snapshot = null, presets = [], usage
         ...presetState,
         session: {
             name: sessionName || 'Custom launch',
-            label: snapshot ? sessionLabel(snapshot) : 'Preparing launch',
+            label: phase === 'disconnected' ? 'Disconnected' : snapshot ? sessionLabel(snapshot) : 'Preparing launch',
             isShuttingDown: Boolean(snapshot?.isShuttingDown),
         },
         canAddBackend:

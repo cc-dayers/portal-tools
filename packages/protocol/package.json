@@ -6,10 +6,11 @@
     "type": "module",
     "exports": {
         ".": "./src/protocol-client.mjs",
+        "./session-store": "./src/session-store.mjs",
         "./mock-host": "./src/mock-launcher-host.mjs"
     },
     "scripts": {
-        "check": "node --check src/protocol-client.mjs && node --check src/mock-launcher-host.mjs"
+        "check": "node --check src/protocol-client.mjs && node --check src/session-store.mjs && node --check src/mock-launcher-host.mjs && node --check src/mock-launcher-transport.mjs"
     },
     "engines": {
         "node": ">=22"

@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
+import os from 'node:os';
 import * as vscode from 'vscode';
 
-import { connectToLauncherHost, ensureLauncherSetup, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
+import { connectToLauncherHost, ensureLauncherSetup, reconnectToLauncherHost, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
 import * as model from './launcher-model.mjs';
 import { createUpdateCommand } from './extension-updates.mjs';
 
@@ -11,6 +12,8 @@ const HOST_RELATIVE_PATH = path.join('Portals', 'scripts', 'portal-launcher-host
 const VIEW_ID = 'ccPortalLauncher.dashboard';
 const PRESETS_KEY = 'ccPortalLauncher.presets';
 const USAGE_KEY = 'ccPortalLauncher.usage';
+const SESSION_KEY = 'ccPortalLauncher.session';
+const SESSION_TOKEN_KEY = 'ccPortalLauncher.sessionToken';
 const PRESET_DISPLAY_SETTING = 'ccPortalLauncher.presets.displayMode';
 const WEBVIEW_COMMANDS = new Set([
     'launchSaved',
@@ -22,6 +25,8 @@ const WEBVIEW_COMMANDS = new Set([
     'addBackend',
     'savePreset',
     'showLogs',
+    'reconnect',
+    'forgetSession',
 ]);
 
 let activeSession;
@@ -59,6 +64,7 @@ export async function activate(context) {
     const output = vscode.window.createOutputChannel('CareContinuity Portal Launcher', { log: true });
     const state = { phase: 'idle', snapshot: null, selection: null, sessionName: '', error: null };
     let webviewView;
+    let connecting;
 
     const getPresets = () => context.workspaceState.get(PRESETS_KEY, []);
     const setPresets = async (presets) => {
@@ -87,7 +93,11 @@ export async function activate(context) {
         const targets = state.snapshot?.targets ?? [];
         const failed = targets.filter((target) => target.status === 'failed').length;
         webviewView.badge = failed ? { value: failed, tooltip: `${failed} failed` } : undefined;
-        webviewView.description = state.phase === 'idle' ? undefined : model.sessionLabel(state.snapshot);
+        webviewView.description = state.phase === 'idle'
+            ? undefined
+            : state.phase === 'disconnected'
+                ? 'Disconnected'
+                : state.snapshot ? model.sessionLabel(state.snapshot) : 'Connecting';
         if (!webviewView.visible) return;
         void webviewView.webview.postMessage({
             type: 'render',
@@ -97,26 +107,69 @@ export async function activate(context) {
 
     function setPhase(phase, patch = {}) {
         Object.assign(state, { phase }, patch);
-        void setSessionContext(phase === 'idle' ? 'idle' : 'running');
+        void setSessionContext(phase === 'idle' || phase === 'disconnected' ? phase : 'running');
         render();
     }
 
     async function connect() {
         if (activeSession) return activeSession;
+        if (connecting) return connecting;
+        connecting = openConnection();
+        try {
+            return await connecting;
+        } finally {
+            connecting = undefined;
+        }
+    }
+
+    async function openConnection() {
+        const saved = context.workspaceState.get(SESSION_KEY);
         const workspace = await findApplicationWorkspace();
         if (!workspace) {
             throw new Error('Open a workspace containing Portals/scripts/portal-launcher-host.mjs.');
         }
 
         const hostPath = resolveHostPath(context, workspace);
-        const client = await connectToLauncherHost({
-            hostPath,
-            cwd: path.dirname(path.dirname(hostPath)),
-            runtimePath: 'node',
-            clientInfo: CLIENT_INFO,
-        });
-        const session = { client, launched: false, disposables: [] };
+        let reference = saved;
+        let client;
+        if (saved) {
+            if (saved.hostPath !== hostPath) throw new Error('The saved launcher belongs to a different application workspace. Forget the session before launching here.');
+            const token = await context.secrets.get(`${SESSION_TOKEN_KEY}.${saved.sessionId}`);
+            if (!token) throw new Error('The saved launcher connection key is missing. Forget the session before launching again.');
+            client = await reconnectToLauncherHost({ ...saved, token, clientInfo: CLIENT_INFO });
+        } else {
+            const id = crypto.randomUUID();
+            const endpoint = process.platform === 'win32'
+                ? `\\\\.\\pipe\\cc-portals-${id}`
+                : path.join(os.tmpdir(), `cc-portals-${id}.sock`);
+            const token = crypto.randomBytes(32).toString('hex');
+            client = await connectToLauncherHost({
+                hostPath,
+                cwd: path.dirname(path.dirname(hostPath)),
+                runtimePath: 'node',
+                clientInfo: CLIENT_INFO,
+                persistentSession: { endpoint, token },
+            });
+            if (client.hello?.capabilities?.persistentSession) {
+                reference = { endpoint, sessionId: client.hello.sessionId, hostPath, name: state.sessionName };
+                try {
+                    await context.secrets.store(`${SESSION_TOKEN_KEY}.${reference.sessionId}`, token);
+                    await context.workspaceState.update(SESSION_KEY, reference);
+                } catch (error) {
+                    client.close();
+                    throw error;
+                }
+            }
+        }
+        const session = { client, launched: client.session?.running === true, reference, disposables: [] };
         activeSession = session;
+        if (session.launched) {
+            setPhase('running', {
+                selection: client.session.runningSelection,
+                sessionName: reference?.name || model.selectionSummary(client.session.runningSelection, client.session.choices),
+                error: null,
+            });
+        }
         session.disposables.push(
             client.onState((snapshot) => {
                 state.snapshot = snapshot;
@@ -129,9 +182,18 @@ export async function activate(context) {
                 render();
             }),
         );
-        void client.exitPromise.then((exitCode) => {
-            output.info(`Launcher session exited with code ${exitCode}.`);
+        session.finished = client.exitPromise.then(async (exitCode) => {
             if (activeSession !== session) return;
+            output.info(`Launcher session exited with code ${exitCode}.`);
+            if (session.reference && !client.sessionEnded) {
+                releaseSession(session);
+                setPhase('disconnected', {
+                    snapshot: null,
+                    error: 'The launcher connection was lost. Processes may still be running. Reconnect before launching again.',
+                });
+                return;
+            }
+            if (session.reference) await clearSessionReference();
             releaseSession(session);
             setPhase('idle', {
                 snapshot: null,
@@ -140,13 +202,29 @@ export async function activate(context) {
                 error: session.launched && exitCode !== 0 ? `The launcher exited with code ${exitCode}. See the log for details.` : state.error,
             });
         });
+        void session.finished.catch((error) => {
+            if (activeSession === session) {
+                releaseSession(session);
+                setPhase(context.workspaceState.get(SESSION_KEY) ? 'disconnected' : 'idle', {
+                    snapshot: null, selection: null, sessionName: '', error: error?.message || String(error),
+                });
+            }
+            showError(error);
+        });
         return session;
     }
 
-    function disconnectIdle(session) {
+    async function clearSessionReference() {
+        const reference = context.workspaceState.get(SESSION_KEY);
+        await context.workspaceState.update(SESSION_KEY, undefined);
+        if (reference) await context.secrets.delete(`${SESSION_TOKEN_KEY}.${reference.sessionId}`);
+    }
+
+    async function disconnectIdle(session) {
         if (session.launched || activeSession !== session) return;
         releaseSession(session);
         session.client.close();
+        if (session.reference) await clearSessionReference();
     }
 
     async function launch({ source, selection, name, presetId = null }) {
@@ -155,12 +233,13 @@ export async function activate(context) {
         let session;
         try {
             session = await connect();
+            if (session.launched) return;
             const resolved =
                 source === 'saved'
                     ? session.client.session?.initialSelection
                     : model.resolvePresetSelection(selection, session.client.session?.choices);
-                    const summary = model.selectionSummary(resolved, session.client.session?.choices);
-                    const launchName = name || summary || 'Last launch';
+            const summary = model.selectionSummary(resolved, session.client.session?.choices);
+            const launchName = name || summary || 'Last launch';
             const payload = source === 'saved' ? { source: 'saved' } : { source: 'selection', selection: resolved };
             const ready = await ensureLauncherSetup(session.client, payload, async (setup) => {
                 output.info(setup.guide || 'Launcher setup is required.');
@@ -173,12 +252,16 @@ export async function activate(context) {
                 return runSetupTask(setup.terminal);
             });
             if (!ready) {
-                disconnectIdle(session);
+                await disconnectIdle(session);
                 setPhase('idle', { snapshot: null, selection: null, sessionName: '', error: null });
                 return;
             }
             session.launched = true;
-                    setPhase('launching', { selection: structuredClone(resolved ?? null), sessionName: launchName });
+            if (session.reference) {
+                session.reference = { ...session.reference, name: launchName };
+                await context.workspaceState.update(SESSION_KEY, session.reference);
+            }
+            setPhase('launching', { selection: structuredClone(resolved ?? null), sessionName: launchName });
             await session.client.request(
                 'command.launch',
                 payload,
@@ -187,10 +270,17 @@ export async function activate(context) {
             await setUsage(model.recordUse(getUsage(), presetId, Date.now(), { name: launchName, summary }));
         } catch (error) {
             if (session) {
-                session.launched = false;
-                disconnectIdle(session);
+                if (session.reference && session.launched) {
+                    releaseSession(session);
+                    session.client.close();
+                } else {
+                    session.launched = false;
+                    await disconnectIdle(session);
+                }
             }
-            setPhase('idle', { snapshot: null, selection: null, error: error?.message || String(error) });
+            setPhase(context.workspaceState.get(SESSION_KEY) ? 'disconnected' : 'idle', {
+                snapshot: null, selection: null, error: error?.message || String(error),
+            });
         }
     }
 
@@ -198,6 +288,7 @@ export async function activate(context) {
         if (activeSession?.launched) throw new Error('Stop the current session before configuring another launch.');
         const session = await connect();
         try {
+            if (session.launched) throw new Error('The previous launcher session was reconnected. Stop it before configuring another launch.');
             const result = await collectSelection(
                 session.client.session,
                 seed
@@ -218,7 +309,7 @@ export async function activate(context) {
             }
             if (result.launch) await launch({ source: 'selection', selection: result.selection, name, presetId });
         } finally {
-            disconnectIdle(session);
+            await disconnectIdle(session);
         }
     }
 
@@ -249,6 +340,7 @@ export async function activate(context) {
         if (confirmed !== 'Apply and relaunch') return;
         if (requireRunningSession() !== session) throw new Error('The session changed while editing. Open its configuration again.');
         await session.client.shutdown('quit', 'Configuration changed from VS Code');
+        await session.finished;
         await launch({ source: 'selection', selection: result.selection, name, presetId });
     }
 
@@ -277,6 +369,10 @@ export async function activate(context) {
             name: name.trim(), summary: model.selectionSummary(state.selection, session.client.session?.choices),
         }));
         state.sessionName = name.trim();
+        if (session.reference) {
+            session.reference = { ...session.reference, name: state.sessionName };
+            await context.workspaceState.update(SESSION_KEY, session.reference);
+        }
         render();
     }
 
@@ -374,6 +470,32 @@ export async function activate(context) {
     }
 
     const commands = {
+        reconnect: async () => {
+            if (activeSession) throw new Error('The launcher is already connected.');
+            if (!context.workspaceState.get(SESSION_KEY)) throw new Error('There is no saved launcher session to reconnect.');
+            setPhase('connecting', { error: null });
+            try {
+                const session = await connect();
+                if (!session.launched) {
+                    await disconnectIdle(session);
+                    setPhase('idle', { snapshot: null, selection: null });
+                }
+            } catch (error) {
+                setPhase('disconnected', { snapshot: null, error: error?.message || String(error) });
+                throw error;
+            }
+        },
+        forgetSession: async () => {
+            if (activeSession || connecting) throw new Error('Disconnect the current session before forgetting it.');
+            const confirmed = await vscode.window.showWarningMessage(
+                'Forget this launcher connection? This does not stop any surviving processes. Stop them separately before launching replacements.',
+                { modal: true }, 'Forget session',
+            );
+            if (confirmed !== 'Forget session') return;
+            if (activeSession || connecting) throw new Error('The connection changed while confirming. Disconnect it before forgetting the session.');
+            await clearSessionReference();
+            setPhase('idle', { snapshot: null, selection: null, sessionName: '', error: null });
+        },
         launchSaved: () => launch({ source: 'saved' }),
         configure: () => configure(),
         showSettings: async () => {
@@ -461,7 +583,7 @@ export async function activate(context) {
         }),
         {
             dispose() {
-                void shutdownActiveSession('VS Code extension disposed');
+                void shutdownActiveSession('VS Code extension disposed').catch(showError);
             },
         },
     );
@@ -469,6 +591,13 @@ export async function activate(context) {
         register(context, `ccPortalLauncher.${name}`, handler);
     }
     await setSessionContext('idle');
+    if (context.workspaceState.get(SESSION_KEY)) {
+        try {
+            await commands.reconnect();
+        } catch (error) {
+            output.error(`Could not reconnect to the launcher: ${error?.message || String(error)}`);
+        }
+    }
 
     // Read-only view of controller state for the integration tests (vscode.extensions.getExtension().exports).
     return {
@@ -801,6 +930,11 @@ function releaseSession(session) {
 async function shutdownActiveSession(reason) {
     const session = activeSession;
     if (!session) return;
+    if (session.reference) {
+        releaseSession(session);
+        session.client.close();
+        return;
+    }
     if (session.launched) {
         try {
             await Promise.race([

@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { runPortalConfigTui } from './config-tui.mjs';
 import { runPortalDashboard } from './dashboard-tui.mjs';
 import { PROTOCOL, PROTOCOL_VERSION, connectToLauncherHost, ensureLauncherSetup, stackModeSupportsVisualStudio } from '@cc-dayers/portal-protocol';
+import { connectToStoredLauncherSession, forgetStoredLauncherSession } from '@cc-dayers/portal-protocol/session-store';
 
 import { createDashboardLauncherAdapter } from './dashboard-adapter.mjs';
 import { runSelfUpdate } from './self-update.mjs';
@@ -63,6 +64,7 @@ export function parseCliArgs(args) {
         protocolInfo: args.includes('--protocol-info'),
         help: args.includes('--help') || args.includes('-h'),
         update: args.includes('--update'),
+        forgetSession: args.includes('--forget-session'),
         performanceSteadyMs: performanceValue,
         hostPath: hostIndex >= 0 ? args[hostIndex + 1] ?? '' : '',
         hostArgs: [
@@ -123,7 +125,8 @@ export function toLauncherSelection(config) {
 // Visual Studio is offered when adding a backend only if it is installed and the launched
 // environment supports it (the host rejects it otherwise).
 export function canAddVisualStudioBackend(session, launchPayload) {
-    const stackMode = launchPayload?.selection?.stackMode ?? session?.initialSelection?.stackMode;
+    const stackMode = session?.runningSelection?.stackMode ??
+        launchPayload?.selection?.stackMode ?? session?.initialSelection?.stackMode;
     return session?.choices?.visualStudioAvailable !== false &&
         stackModeSupportsVisualStudio(session?.choices?.stackModes, stackMode);
 }
@@ -134,6 +137,8 @@ export async function run(args = process.argv.slice(2)) {
         process.stdout.write(
             'Usage: cc-portals-tui [--config] [--verbose] [--host <portal-launcher-host.mjs>] [-- launcher flags]\n' +
                 '       cc-portals-tui --update\n\n' +
+                '       cc-portals-tui --forget-session [--host <path>]\n\n' +
+                'Reconnects to this workspace\'s detached TUI session when available.\n' +
                 'Run inside a carecontinuity.app checkout; the launcher host is found automatically.\n',
         );
         return 0;
@@ -169,6 +174,11 @@ export async function run(args = process.argv.slice(2)) {
         );
         return 2;
     }
+    if (parsed.forgetSession) {
+        await forgetStoredLauncherSession({ hostPath });
+        process.stdout.write('Forgot the TUI connection only. Any surviving processes must be stopped separately before launching again.\n');
+        return 0;
+    }
     if (
         parsed.performanceSteadyMs == null &&
         (!process.stdin.isTTY || !process.stdout.isTTY)
@@ -178,27 +188,44 @@ export async function run(args = process.argv.slice(2)) {
     }
 
     let client;
+    let storedSession;
+    let detachRequested = false;
+    const shutdown = (cause, reason) => {
+        if (client) void client.shutdown(cause, reason).catch((error) => {
+            process.stderr.write(`Unable to stop launcher: ${sanitizeMessage(error.message)}\n`);
+            client.close();
+        });
+    };
     const handleInterrupt = () => {
-        if (client) void client.shutdown('interrupt', 'SIGINT');
+        shutdown('interrupt', 'SIGINT');
     };
     const handleTerminate = () => {
-        if (client) void client.shutdown('terminate', 'SIGTERM');
+        shutdown('terminate', 'SIGTERM');
     };
     process.once('SIGINT', handleInterrupt);
     process.once('SIGTERM', handleTerminate);
 
     try {
-        client = await connectToLauncherHost({
+        const connectionOptions = {
             hostPath,
             hostArgs: parsed.hostArgs,
             // The host lives in Portals/scripts and expects to run from the Portals workspace.
             cwd: process.env.PORTALS_ROOT || path.dirname(path.dirname(hostPath)),
             clientInfo: { name: CLIENT_NAME, version: PACKAGE_VERSION },
-        });
+        };
+        if (parsed.performanceSteadyMs == null) {
+            storedSession = await connectToStoredLauncherSession(connectionOptions);
+            client = storedSession.client;
+        } else {
+            client = await connectToLauncherHost(connectionOptions);
+        }
         const session = client.session;
+        if (session.running && parsed.hostArgs.length) {
+            process.stdout.write('Reconnected to the existing session; startup flags do not reconfigure a running session.\n');
+        }
         let launchPayload = { source: 'saved' };
 
-        if (session.configurationRequired) {
+        if (!session.running && session.configurationRequired) {
             const selectedConfig = await runPortalConfigTui({
                 config: session.savedConfig,
                 defaultBackendModules: session.initialSelection?.backendModules ?? [],
@@ -218,7 +245,8 @@ export async function run(args = process.argv.slice(2)) {
             };
         }
 
-        if (!await prepareTuiLaunch(client, launchPayload, {
+        // A recovered running session was already launched, so its prerequisites are not re-checked.
+        if (!session.running && !await prepareTuiLaunch(client, launchPayload, {
             interactive: parsed.performanceSteadyMs == null && Boolean(process.stdin.isTTY && process.stdout.isTTY),
         })) {
             return await client.shutdown('cancel', 'prerequisite setup cancelled');
@@ -240,14 +268,16 @@ export async function run(args = process.argv.slice(2)) {
             parsed.performanceSteadyMs == null ? {} : createPerformanceTerminal();
         try {
             return await runPortalDashboard({
-            launchOptions: {
-                targets: [],
-                logPath: session.logPath,
-                backendChoices: session.choices?.backendModules ?? [],
-                canAddBackend: client.hello?.capabilities?.commands?.includes('backend.add') ?? false,
-                canUseVisualStudio: canAddVisualStudioBackend(session, launchPayload),
-            },
-            launchPortals: createDashboardLauncherAdapter(client, launchPayload),
+                launchOptions: {
+                    targets: [],
+                    logPath: session.logPath,
+                    backendChoices: session.choices?.backendModules ?? [],
+                    canAddBackend: client.hello?.capabilities?.commands?.includes('backend.add') ?? false,
+                    canUseVisualStudio: canAddVisualStudioBackend(session, launchPayload),
+                    canDetach: storedSession?.persistent === true,
+                    onDetach: () => { detachRequested = true; },
+                },
+                launchPortals: createDashboardLauncherAdapter(client, launchPayload),
                 ...terminal,
             });
         } finally {
@@ -261,6 +291,12 @@ export async function run(args = process.argv.slice(2)) {
     } finally {
         process.removeListener('SIGINT', handleInterrupt);
         process.removeListener('SIGTERM', handleTerminate);
+        client?.close();
+        if (storedSession && client?.sessionEnded) await storedSession.clear();
+        if (detachRequested) process.stdout.write('Detached. Portals are still running; run cc-portals-tui again to reconnect.\n');
+        else if (storedSession?.persistent && client && !client.sessionEnded) {
+            process.stderr.write('Launcher connection closed without confirmed shutdown. Run cc-portals-tui again to recover; no replacement session will be launched.\n');
+        }
     }
 }
 

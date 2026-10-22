@@ -57,6 +57,54 @@ test('dashboard adapter maps controller actions and streamed events to the exist
     await expect(launchPromise).resolves.toBe(0);
 });
 
+test('reattached dashboard skips launch and detaches without requesting shutdown', async () => {
+    const exit = Promise.withResolvers();
+    const client = {
+        session: { running: true, runningSelection: { portals: ['sso'] } },
+        lastSnapshot: { targets: [{ id: 'sso', status: 'ready' }] },
+        onState: listener => { listener(client.lastSnapshot); return vi.fn(); },
+        onLog: () => vi.fn(),
+        onError: () => vi.fn(),
+        request: vi.fn(),
+        exitPromise: exit.promise,
+        close: vi.fn(() => exit.resolve(0)),
+    };
+    let controller;
+    const onStateChange = vi.fn();
+    const result = createDashboardLauncherAdapter(client, { source: 'saved' })({
+        onControllerReady: value => { controller = value; }, onStateChange,
+    });
+    const detached = vi.fn();
+    await controller.detach(detached);
+    await expect(result).resolves.toBe(0);
+    expect(detached).toHaveBeenCalledOnce();
+    expect(detached.mock.invocationCallOrder[0]).toBeLessThan(client.close.mock.invocationCallOrder[0]);
+    expect(client.request).not.toHaveBeenCalled();
+    expect(onStateChange).toHaveBeenCalledWith(client.lastSnapshot);
+});
+
+test('detach waits for launch acceptance before disconnecting', async () => {
+    const launch = Promise.withResolvers();
+    const exit = Promise.withResolvers();
+    const client = {
+        session: {},
+        onState: () => vi.fn(), onLog: () => vi.fn(), onError: () => vi.fn(),
+        request: vi.fn(() => launch.promise),
+        exitPromise: exit.promise,
+        close: vi.fn(() => exit.resolve(0)),
+    };
+    let controller;
+    const result = createDashboardLauncherAdapter(client, { source: 'saved' })({
+        onControllerReady: value => { controller = value; },
+    });
+    const detach = controller.detach();
+    expect(client.close).not.toHaveBeenCalled();
+    launch.resolve({ accepted: true });
+    await detach;
+    await expect(result).resolves.toBe(0);
+    expect(client.close).toHaveBeenCalledOnce();
+});
+
 function serverMessage(type, seq, payload, requestId) {
     return `${JSON.stringify({
         protocol: PROTOCOL,

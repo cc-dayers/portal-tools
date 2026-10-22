@@ -16,6 +16,7 @@ cc-portals-tui            # launch the saved configuration
 cc-portals-tui --config   # reopen the configuration wizard first
 cc-portals-tui --update   # install the newest tui-v* release
 cc-portals-tui --help
+cc-portals-tui --forget-session # discard a stale connection, NOT stop processes
 ```
 
 Launcher flags such as `--config`, `--reset`, and `--verbose` are passed to the
@@ -35,6 +36,31 @@ rechecks prerequisites before launching. Declining or cancelling starts no targe
 If setup fails or needs a restart, resolve it and run the TUI again. Noninteractive
 performance runs report the setup guide without installing anything. Older hosts
 retain their existing launch behavior.
+
+## Persistent sessions
+
+With an updated application host, the TUI reconnects automatically to its previous
+session for that host path. Press **d** to detach without stopping portals, then
+run `cc-portals-tui` again to recover live status, controls, the host's active
+configuration, and up to 500 recent log entries. Closing a terminal unexpectedly
+also leaves the session recoverable if its host survives. **q**, **Esc**,
+**Ctrl+C**, and **Stop All** still request shutdown.
+
+Startup flags such as `--config` do not reconfigure a recovered running session;
+stop it first to configure a new one. Older hosts do not offer Detach and retain
+their previous lifecycle. Internal performance measurements remain nonpersistent.
+
+Connection references and keys are local to your OS account under
+`~/.cc-portals/tui-sessions` (not the repository). Files use owner-only permissions
+on Unix and inherit your user-profile access controls on Windows. Do not copy,
+share, or commit these files. A stale or already-connected session blocks a new
+launch: retry after the other TUI detaches, or stop surviving processes separately
+and explicitly run `--forget-session` before starting replacements. Forgetting
+does not shut anything down. Sessions cannot survive a host crash or reboot.
+
+TUI session discovery is separate from the VS Code extension's SecretStorage.
+This does not attach to extension-owned sessions, and one host accepts only one
+connected client at a time.
 
 ## Developing
 

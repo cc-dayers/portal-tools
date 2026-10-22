@@ -78,6 +78,7 @@ test('parseCliArgs separates the host script from forwarded launcher flags', () 
         protocolInfo: false,
         help: false,
         update: false,
+        forgetSession: false,
         performanceSteadyMs: null,
         hostPath: 'C:/repo/Portals/scripts/portal-launcher-host.mjs',
         hostArgs: ['--config', '--verbose'],
@@ -168,6 +169,7 @@ test('parseCliArgs recognizes help, protocol preflight, and update modes', () =>
     expect(parseCliArgs(['--help'])).toMatchObject({ help: true });
     expect(parseCliArgs(['--protocol-info'])).toMatchObject({ protocolInfo: true });
     expect(parseCliArgs(['--update'])).toMatchObject({ update: true });
+    expect(parseCliArgs(['--forget-session'])).toMatchObject({ forgetSession: true });
 });
 
 test('toLauncherSelection restores the wizard stack mode', () => {
@@ -214,4 +216,7 @@ test('adding a Visual Studio backend follows the launched environment and instal
     // A selection made in the configuration TUI wins over the saved one.
     expect(canAddVisualStudioBackend(session('fullstack-local-db'),
         { source: 'selection', selection: { stackMode: 'fullstack-shadow-db' } })).toBe(false);
+    expect(canAddVisualStudioBackend({
+        ...session('fullstack-local-db'), runningSelection: { stackMode: 'fullstack-shadow-db' },
+    }, { source: 'saved' })).toBe(false);
 });

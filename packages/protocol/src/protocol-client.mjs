@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
+import { createConnection } from 'node:net';
 
 export const PROTOCOL = 'cc.portals.launcher.v1';
 export const PROTOCOL_VERSION = 1;
@@ -32,10 +33,16 @@ export async function connectToLauncherHost({
     env = process.env,
     runtimePath = process.execPath,
     clientInfo,
+    persistentSession,
 }) {
     const child = spawn(runtimePath, [hostPath, ...hostArgs], {
         cwd,
-        env,
+        env: persistentSession ? {
+            ...env,
+            CC_PORTALS_SESSION_ENDPOINT: persistentSession.endpoint,
+            CC_PORTALS_SESSION_TOKEN: persistentSession.token,
+        } : env,
+        detached: Boolean(persistentSession),
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
     });
@@ -44,15 +51,49 @@ export async function connectToLauncherHost({
         output: child.stdin,
         errorInput: child.stderr,
         clientInfo,
+        sessionToken: persistentSession?.token,
         onClose() {
-            if (!child.killed) child.kill();
+            if (persistentSession && client.hello?.capabilities?.persistentSession) {
+                child.stdin.end();
+                child.stdout.destroy();
+                child.stderr.destroy();
+                child.unref();
+            } else if (!child.killed) child.kill();
         },
     });
 
     child.once('error', (error) => client.fail(error));
     child.once('exit', (code, signal) => client.handleProcessExit(code, signal));
-    await client.connect();
+    try {
+        await client.connect();
+    } catch (error) {
+        client.close();
+        throw error;
+    }
+    if (persistentSession && client.hello?.capabilities?.persistentSession) child.unref();
     return client;
+}
+
+export async function reconnectToLauncherHost({ endpoint, token, sessionId, clientInfo }) {
+    const socket = createConnection(endpoint);
+    const client = createProtocolClient({
+        input: socket,
+        output: socket,
+        clientInfo,
+        sessionToken: token,
+        onClose: () => socket.destroy(),
+    });
+    socket.once('close', () => client.fail(new Error('Launcher session connection closed.')));
+    try {
+        await client.connect();
+        if (client.hello?.sessionId !== sessionId || !client.hello?.capabilities?.persistentSession) {
+            throw new Error('The launcher connection does not match the saved session.');
+        }
+        return client;
+    } catch (error) {
+        client.close();
+        throw error;
+    }
 }
 
 export function createProtocolClient({
@@ -61,6 +102,7 @@ export function createProtocolClient({
     errorInput,
     onClose = () => {},
     clientInfo = { name: 'cc-portals-client', version: '0.0.0' },
+    sessionToken,
 }) {
     const events = new EventEmitter();
     const pending = new Map();
@@ -72,6 +114,7 @@ export function createProtocolClient({
     let session = null;
     let lastSnapshot = null;
     let closed = false;
+    let sessionEnded = false;
     let resolveExit;
     let resolveHello;
     let rejectHello;
@@ -89,6 +132,9 @@ export function createProtocolClient({
         resolveSession = resolve;
         rejectSession = reject;
     });
+    // A transport failure can reject both promises before connect awaits the second.
+    void helloPromise.catch(() => {});
+    void sessionPromise.catch(() => {});
 
     function send(type, payload = {}, { timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
         if (closed || output.destroyed || output.writableEnded) {
@@ -165,6 +211,7 @@ export function createProtocolClient({
         } else if (message.type === 'event.error') {
             events.emit('error-event', message.payload);
         } else if (message.type === 'event.session-exit') {
+            sessionEnded = true;
             closed = true;
             resolveExit(message.payload?.exitCode ?? 1);
             cleanup();
@@ -199,6 +246,7 @@ export function createProtocolClient({
     function cleanup() {
         input.off?.('data', handleData);
         input.off?.('error', fail);
+        input.off?.('end', handleEnd);
         errorInput?.off?.('data', handleErrorData);
         for (const request of pending.values()) {
             clearTimeout(request.timer);
@@ -223,6 +271,14 @@ export function createProtocolClient({
     input.setEncoding?.('utf8');
     input.on('data', handleData);
     input.on('error', fail);
+    if (output !== input) {
+        output.on('error', fail);
+        output.once('close', () => output.off('error', fail));
+    }
+    function handleEnd() {
+        fail(new Error('Launcher session connection closed.'));
+    }
+    input.on('end', handleEnd);
     errorInput?.setEncoding?.('utf8');
     errorInput?.on('data', handleErrorData);
 
@@ -235,6 +291,7 @@ export function createProtocolClient({
             await send('client.hello', {
                 selectedVersion: PROTOCOL_VERSION,
                 client: clientInfo,
+                ...(sessionToken ? { sessionToken } : {}),
             });
             return withTimeout(sessionPromise, REQUEST_TIMEOUT_MS, 'launcher session');
         },
@@ -249,6 +306,9 @@ export function createProtocolClient({
         },
         get exitPromise() {
             return exitPromise;
+        },
+        get sessionEnded() {
+            return sessionEnded;
         },
         request: send,
         onState(listener) {
@@ -282,6 +342,7 @@ export function createProtocolClient({
         close() {
             if (closed) return;
             closed = true;
+            resolveExit(0);
             cleanup();
         },
     };

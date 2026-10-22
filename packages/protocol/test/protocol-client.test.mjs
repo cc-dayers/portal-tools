@@ -1,4 +1,8 @@
 import { PassThrough } from 'node:stream';
+import { createServer } from 'node:net';
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
 import { expect, test, vi } from 'vitest';
 
 import {
@@ -7,6 +11,7 @@ import {
     createProtocolClient,
     stackModeSupportsVisualStudio,
     ensureLauncherSetup,
+    reconnectToLauncherHost,
 } from '../src/protocol-client.mjs';
 
 test('setup preflight preserves older hosts and skips installation when ready', async () => {
@@ -138,4 +143,82 @@ test('stack modes allow Visual Studio unless the host sends supportsVisualStudio
     expect(stackModeSupportsVisualStudio(stackModes, 'fullstack-local-db')).toBe(true);
     expect(stackModeSupportsVisualStudio(stackModes, 'fullstack-shadow-db')).toBe(false);
     expect(stackModeSupportsVisualStudio(undefined, 'fullstack-local-db')).toBe(true);
+});
+
+test('reconnect authenticates and restores a snapshot without issuing a launch', async () => {
+    const endpoint = process.platform === 'win32'
+        ? `\\\\.\\pipe\\cc-portals-client-test-${randomUUID()}`
+        : path.join(os.tmpdir(), `cc-portals-${randomUUID()}.sock`);
+    const requests = [];
+    const sockets = new Set();
+    const server = createServer((socket) => {
+        sockets.add(socket);
+        socket.on('close', () => sockets.delete(socket));
+        socket.write(serverMessage('server.hello', 1, {
+            supportedVersions: [1], sessionId: 'existing-session', capabilities: { persistentSession: true },
+        }));
+        let buffer = '';
+        socket.on('data', (chunk) => {
+            buffer += chunk;
+            let newline;
+            while ((newline = buffer.indexOf('\n')) >= 0) {
+                const request = JSON.parse(buffer.slice(0, newline));
+                buffer = buffer.slice(newline + 1);
+                requests.push(request);
+                socket.write(serverMessage('response.ok', 2, {}, request.requestId));
+                if (request.type === 'client.hello') {
+                    socket.write(serverMessage('event.session-ready', 3, {
+                        running: true, runningSelection: { portals: ['sso'] },
+                    }));
+                    socket.write(serverMessage('event.state', 4, { targets: [{ id: 'sso', status: 'ready' }] }));
+                } else if (request.type === 'command.session.shutdown') {
+                    socket.end(serverMessage('event.session-exit', 5, { exitCode: 0 }));
+                }
+            }
+        });
+    });
+    await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(endpoint, resolve);
+    });
+    let client;
+    try {
+        client = await reconnectToLauncherHost({ endpoint, token: 'private-key', sessionId: 'existing-session' });
+        expect(client.session.running).toBe(true);
+        expect(client.lastSnapshot.targets[0]).toMatchObject({ id: 'sso', status: 'ready' });
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toMatchObject({ type: 'client.hello', payload: { sessionToken: 'private-key' } });
+        await client.shutdown();
+        expect(client.sessionEnded).toBe(true);
+        await expect(reconnectToLauncherHost({
+            endpoint, token: 'private-key', sessionId: 'different-session',
+        })).rejects.toThrow('does not match');
+        expect(requests.every(request => request.type !== 'command.launch')).toBe(true);
+    } finally {
+        client?.close();
+        for (const socket of sockets) socket.destroy();
+        await new Promise(resolve => server.close(resolve));
+    }
+    await expect(reconnectToLauncherHost({
+        endpoint, token: 'private-key', sessionId: 'existing-session',
+    })).rejects.toThrow();
+});
+
+test('unexpected EOF reports disconnection, not a completed session', async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const client = createProtocolClient({ input, output });
+    const requests = collectJson(output);
+    input.write(serverMessage('server.hello', 1, { supportedVersions: [1] }));
+    const connected = client.connect();
+    await waitFor(() => requests.length === 1);
+    input.write(serverMessage('response.ok', 2, {}, requests[0].requestId));
+    input.write(serverMessage('event.session-ready', 3, { running: true }));
+    await connected;
+    const error = vi.fn();
+    client.onError(error);
+    input.end();
+    await expect(client.exitPromise).resolves.toBe(1);
+    expect(client.sessionEnded).toBe(false);
+    expect(error).toHaveBeenCalledWith({ message: 'Launcher session connection closed.' });
 });

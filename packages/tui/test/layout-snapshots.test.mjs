@@ -94,7 +94,7 @@ test('config wizard keeps Back available on Review alongside Launch', async () =
     expect(review.settled).toContain('LAUNCH PORTALS');
 });
 
-async function renderDashboard(columns, rows) {
+async function renderDashboard(columns, rows, canDetach = false) {
     const stdin = makeFakeStdin();
     const { stream: stdout, getBuffer, getChunks } = makeFakeStdout(columns, rows);
 
@@ -108,6 +108,7 @@ async function renderDashboard(columns, rows) {
                 open: () => true,
                 restartAll: () => true,
                 stopAll: () => resolve(0),
+                detach: () => resolve(0),
             });
             // Only ONE state change here — keeping this render deterministic
             // (a single settle point before we read the frame) is what makes
@@ -117,7 +118,7 @@ async function renderDashboard(columns, rows) {
         });
 
     const dashboardPromise = runPortalDashboard({
-        launchOptions: { targets: createSnapshot().targets, logPath: 'scripts/logs/portals.log' },
+        launchOptions: { targets: createSnapshot().targets, logPath: 'scripts/logs/portals.log', canDetach },
         launchPortals,
         stdin,
         stdout,
@@ -172,6 +173,13 @@ for (const [columns, rows] of DASHBOARD_SIZES) {
 
     test(`dashboard at ${columns}x${rows} renders as expected`, async () => {
         const { settled } = await renderDashboard(columns, rows);
+        expect(settled).toMatchSnapshot();
+    });
+
+    test(`persistent dashboard at ${columns}x${rows} advertises detach without overflowing`, async () => {
+        const { allFrames, settled } = await renderDashboard(columns, rows, true);
+        expect(findOverflowingLines(allFrames, columns)).toEqual([]);
+        expect(settled).toContain('d detach');
         expect(settled).toMatchSnapshot();
     });
 }

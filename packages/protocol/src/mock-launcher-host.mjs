@@ -18,6 +18,8 @@
 import process from 'node:process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createPersistentMockTransport } from './mock-launcher-transport.mjs';
+import { randomUUID } from 'node:crypto';
 
 const PROTOCOL = 'cc.portals.launcher.v1';
 const PROTOCOL_VERSION = 1;
@@ -95,6 +97,7 @@ export function createMockLauncherHost({
     output = process.stdout,
     args = [],
     scenario = SCENARIO,
+    reconnectable = false,
 } = {}) {
     const cliArgs = new Set(args);
     const configurationRequired = cliArgs.has('--config') || cliArgs.has('--configure');
@@ -104,14 +107,22 @@ export function createMockLauncherHost({
     let launched = false;
     let setupChecked = false;
     let finished = false;
+    let runningSelection = null;
+    let lastSnapshot = null;
+    const recentLogs = [];
     let timers = [];
     let resolveDone;
     const done = new Promise((resolve) => {
         resolveDone = resolve;
     });
 
-    function send(type, payload = {}, requestId = null) {
+    function send(type, payload = {}, requestId = null, replay = false) {
         if (finished) return;
+        if (type === 'event.state') lastSnapshot = structuredClone(payload);
+        if (type === 'event.log' && !replay) {
+            recentLogs.push(payload);
+            if (recentLogs.length > 500) recentLogs.shift();
+        }
         const message = { protocol: PROTOCOL, version: PROTOCOL_VERSION, type, payload };
         if (requestId) message.requestId = requestId;
         output.write(`${JSON.stringify(message)}\n`);
@@ -166,7 +177,12 @@ export function createMockLauncherHost({
                 existingServerModes: MOCK_EXISTING_SERVER_CHOICES,
                 visualStudioAvailable: true,
             },
+            ...(reconnectable ? { running: launched, runningSelection } : {}),
         });
+        if (reconnectable && lastSnapshot) send('event.state', lastSnapshot);
+        if (reconnectable) {
+            for (const entry of recentLogs) send('event.log', entry, null, true);
+        }
     }
 
     function buildTargets(selectionOrSaved) {
@@ -257,6 +273,14 @@ export function createMockLauncherHost({
         }
 
         launched = true;
+        runningSelection = message.payload.source === 'saved'
+            ? {
+                portals: MOCK_SAVED_CONFIG.portals, stackMode: 'frontend-dev-api',
+                backendRunMode: 'background', backendModules: [], visualStudioModules: [],
+                backendWatchModules: [], buildMode: 'dev', existingServerMode: 'auto-restart',
+                verbose: false, autoOpen: true,
+            }
+            : structuredClone(selection);
         const targets = buildTargets(selection);
         send('response.ok', { command: 'launch', accepted: true }, message.requestId);
         runScenario(message, targets);
@@ -287,7 +311,7 @@ export function createMockLauncherHost({
             return;
         }
 
-        if (!handshakeComplete) {
+        if (!handshakeComplete || (reconnectable && message.type === 'client.hello')) {
             if (message.type !== 'client.hello') {
                 sendError(message.requestId, 'INVALID_MESSAGE', 'client.hello must be the first command.');
                 return;
@@ -365,9 +389,10 @@ export function createMockLauncherHost({
 
     send('server.hello', {
         supportedVersions: [PROTOCOL_VERSION],
-        sessionId: 'mock-session',
+        sessionId: randomUUID(),
         authority: { name: 'mock-portals-launcher', pid: process.pid, nodeVersion: process.versions.node },
         capabilities: {
+            ...(reconnectable ? { persistentSession: true } : {}),
             commands: [
                 'setup.check',
                 'launch',
@@ -386,12 +411,25 @@ export function createMockLauncherHost({
     return { done, close: handleEnd };
 }
 
-async function main() {
-    const host = createMockLauncherHost({ args: process.argv.slice(2) });
-    process.exitCode = await host.done;
+export async function runMockLauncherHost(args = process.argv.slice(2)) {
+    const endpoint = process.env.CC_PORTALS_SESSION_ENDPOINT;
+    const token = process.env.CC_PORTALS_SESSION_TOKEN;
+    delete process.env.CC_PORTALS_SESSION_ENDPOINT;
+    delete process.env.CC_PORTALS_SESSION_TOKEN;
+    const transport = endpoint
+        ? await createPersistentMockTransport({ endpoint, token, input: process.stdin, output: process.stdout })
+        : null;
+    try {
+        return await createMockLauncherHost({
+            args,
+            ...(transport ? { input: transport.input, output: transport.output, reconnectable: true } : {}),
+        }).done;
+    } finally {
+        transport?.close();
+    }
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-    await main();
+    process.exitCode = await runMockLauncherHost();
 }
