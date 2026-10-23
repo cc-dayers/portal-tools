@@ -96,6 +96,8 @@ export async function runPortalDashboard({
             {
                 exitOnCtrlC: false,
                 patchConsole: false,
+                // A TTY is required above; without this, Ink renders only the final frame when CI is set.
+                interactive: true,
                 stdin,
                 stdout: throttledOutput.stdout,
                 stderr,

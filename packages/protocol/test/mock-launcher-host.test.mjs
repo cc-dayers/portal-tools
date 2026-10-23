@@ -154,10 +154,11 @@ test('persistent mock process survives disconnect and restores controls without 
         expect(client.session).toMatchObject({
             running: true, runningSelection: { portals: ['coordinator'], stackMode: 'frontend-dev-api' },
         });
-        expect(client.lastSnapshot.targets).toMatchObject([{ id: 'coordinator', status: 'ready' }]);
+        // The host replays state and logs after the session reply; a Unix socket may deliver them separately.
         const logs = [];
         client.onLog(entry => logs.push(entry));
-        expect(logs.some(entry => entry.line.includes('ready'))).toBe(true);
+        await waitFor(() => client.lastSnapshot && logs.some(entry => entry.line.includes('ready')), 5000);
+        expect(client.lastSnapshot.targets).toMatchObject([{ id: 'coordinator', status: 'ready' }]);
         await client.request('command.target.restart', { targetId: 'coordinator' });
         await expect(client.request('command.launch', { source: 'saved' })).rejects.toThrow('already been launched');
         await client.shutdown('quit', 'test complete');
