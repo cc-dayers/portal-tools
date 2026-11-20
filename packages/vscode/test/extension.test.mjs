@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
     executeTask: vi.fn(),
     taskProcessEnd: null,
     taskEnd: null,
+    workspaceFolders: [],
+    stat: vi.fn(),
 }));
 
 vi.mock('vscode', () => ({
@@ -38,7 +40,7 @@ vi.mock('vscode', () => ({
         onDidEndTaskProcess: (handler) => { mocks.taskProcessEnd = handler; return { dispose() {} }; },
         onDidEndTask: (handler) => { mocks.taskEnd = handler; return { dispose() {} }; },
     },
-    Uri: { joinPath: (base, ...parts) => ({ fsPath: `${base.fsPath}/${parts.join('/')}` }) },
+    Uri: { joinPath: (base, ...parts) => ({ ...base, fsPath: `${base.fsPath}/${parts.join('/')}` }) },
     commands: {
         executeCommand: mocks.executeCommand,
         registerCommand: (name, handler) => {
@@ -47,8 +49,8 @@ vi.mock('vscode', () => ({
         },
     },
     workspace: {
-        workspaceFolders: [{ uri: { fsPath: '/app' } }],
-        fs: { stat: vi.fn().mockResolvedValue({}) },
+        get workspaceFolders() { return mocks.workspaceFolders; },
+        fs: { stat: mocks.stat },
         getConfiguration: () => ({ get: (_key, fallback) => mocks.mode ?? fallback, update: mocks.update }),
         onDidChangeConfiguration: (handler) => {
             mocks.onConfiguration = handler;
@@ -98,6 +100,8 @@ describe('preset settings and actions', () => {
         mocks.pickers = [];
         mocks.finish = null;
         mocks.mode = 'full';
+        mocks.workspaceFolders = [{ uri: { fsPath: '/app' } }];
+        mocks.stat.mockResolvedValue({});
         mocks.input.mockResolvedValue('Daily updated');
         mocks.warning.mockResolvedValue('Delete');
         mocks.update.mockImplementation(async (_key, value) => {
@@ -189,6 +193,60 @@ describe('preset settings and actions', () => {
     test('registers the update command without contacting the launcher', () => {
         expect(mocks.commands.get('ccPortalLauncher.checkForUpdates')).toBeTypeOf('function');
         expect(mocks.connect).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['/app', '/app/Portals'],
+        ['/app/Portals', '/app/Portals'],
+    ])('launches a starter preset from workspace folder %s', async (folder, portals) => {
+        mocks.workspaceFolders = [{ uri: { fsPath: folder } }];
+        const hostPath = `${portals}/scripts/portal-launcher-host.mjs`;
+        mocks.stat.mockImplementation(async (uri) => {
+            if (uri.fsPath !== hostPath) throw Object.assign(new Error('Not found'), { code: 'FileNotFound' });
+            return {};
+        });
+        await mocks.commands.get('ccPortalLauncher.preset.launch')({ presetId: 'builtin-all-dev-api' });
+        expect(mocks.connect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            hostPath, cwd: portals,
+        }));
+        expect(api.phase).toBe('running');
+        expect(client.request).toHaveBeenCalledWith('command.launch', expect.objectContaining({ source: 'selection' }));
+    });
+
+    test('finds the Portals root after unrelated folders in a WSL multi-root workspace', async () => {
+        const remote = { scheme: 'vscode-remote', authority: 'wsl+Ubuntu' };
+        mocks.workspaceFolders = [
+            { uri: { ...remote, fsPath: '/home/dev/app/e2e' } },
+            { uri: { ...remote, fsPath: '/home/dev/app/Portals' } },
+            { uri: { ...remote, fsPath: '/home/dev/app/Portals/common' } },
+        ];
+        const hostPath = '/home/dev/app/Portals/scripts/portal-launcher-host.mjs';
+        mocks.stat.mockImplementation(async (uri) => {
+            expect(uri).toMatchObject(remote);
+            if (uri.fsPath !== hostPath) throw Object.assign(new Error('Not found'), { code: 'FileNotFound' });
+            return {};
+        });
+        await mocks.commands.get('ccPortalLauncher.preset.launch')({ presetId: 'builtin-all-dev-api' });
+        expect(mocks.connect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            hostPath, cwd: '/home/dev/app/Portals',
+        }));
+        expect(api.phase).toBe('running');
+    });
+
+    test('reports a missing launcher without connecting', async () => {
+        mocks.stat.mockRejectedValue(Object.assign(new Error('Not found'), { code: 'FileNotFound' }));
+        await mocks.commands.get('ccPortalLauncher.launchSaved')();
+        expect(mocks.connect).not.toHaveBeenCalled();
+        expect(api.dashboard.error).toContain('portal-launcher-host.mjs');
+        expect(api.phase).toBe('idle');
+    });
+
+    test('surfaces workspace filesystem errors instead of reporting a missing launcher', async () => {
+        mocks.stat.mockRejectedValue(Object.assign(new Error('Workspace access denied'), { code: 'NoPermissions' }));
+        await mocks.commands.get('ccPortalLauncher.launchSaved')();
+        expect(mocks.connect).not.toHaveBeenCalled();
+        expect(api.dashboard.error).toBe('Workspace access denied');
+        expect(api.phase).toBe('idle');
     });
 
     test('missing prerequisites open a process task, recheck, then launch', async () => {

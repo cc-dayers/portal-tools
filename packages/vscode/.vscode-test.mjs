@@ -5,7 +5,7 @@ export default defineConfig({
     files: 'test/integration/**/*.integration.cjs',
     // Command-line test runs cannot share a running Stable instance, so tests use Insiders.
     version: 'insiders',
-    workspaceFolder: './test/fixtures/app',
+    workspaceFolder: './test/fixtures/app/Portals/Portals.code-workspace',
     launchArgs: ['--disable-extensions', '--disable-workspace-trust'],
     mocha: { ui: 'bdd', timeout: 20_000 },
 });

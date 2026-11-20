@@ -8,7 +8,6 @@ import * as model from './launcher-model.mjs';
 import { createUpdateCommand } from './extension-updates.mjs';
 
 const CLIENT_INFO = { name: 'cc-portals-vscode', version: '0.0.1' };
-const HOST_RELATIVE_PATH = path.join('Portals', 'scripts', 'portal-launcher-host.mjs');
 const VIEW_ID = 'ccPortalLauncher.dashboard';
 const PRESETS_KEY = 'ccPortalLauncher.presets';
 const USAGE_KEY = 'ccPortalLauncher.usage';
@@ -124,12 +123,12 @@ export async function activate(context) {
 
     async function openConnection() {
         const saved = context.workspaceState.get(SESSION_KEY);
-        const workspace = await findApplicationWorkspace();
-        if (!workspace) {
-            throw new Error('Open a workspace containing Portals/scripts/portal-launcher-host.mjs.');
+        const hostUri = await findLauncherHost();
+        if (!hostUri) {
+            throw new Error('Open the application repository or Portals folder containing scripts/portal-launcher-host.mjs.');
         }
 
-        const hostPath = resolveHostPath(context, workspace);
+        const hostPath = resolveHostPath(context, hostUri);
         let reference = saved;
         let client;
         if (saved) {
@@ -638,21 +637,26 @@ function dashboardHtml(webview, root) {
 </html>`;
 }
 
-function resolveHostPath(context, workspace) {
+function resolveHostPath(context, hostUri) {
     // Development-only escape hatch so the Extension Development Host can drive dev/mock-launcher-host.mjs.
     const override = process.env.CC_PORTAL_LAUNCHER_HOST;
     if (override && context.extensionMode === vscode.ExtensionMode.Development) return path.resolve(override);
-    return path.join(workspace.uri.fsPath, HOST_RELATIVE_PATH);
+    return hostUri.fsPath;
 }
 
-async function findApplicationWorkspace() {
+async function findLauncherHost() {
     for (const folder of vscode.workspace.workspaceFolders || []) {
-        const hostUri = vscode.Uri.joinPath(folder.uri, 'Portals', 'scripts', 'portal-launcher-host.mjs');
-        try {
-            await vscode.workspace.fs.stat(hostUri);
-            return folder;
-        } catch {
-            // Continue through multi-root workspaces until the application repo is found.
+        const candidates = [
+            vscode.Uri.joinPath(folder.uri, 'Portals', 'scripts', 'portal-launcher-host.mjs'),
+            vscode.Uri.joinPath(folder.uri, 'scripts', 'portal-launcher-host.mjs'),
+        ];
+        for (const hostUri of candidates) {
+            try {
+                await vscode.workspace.fs.stat(hostUri);
+                return hostUri;
+            } catch (error) {
+                if (error?.code !== 'FileNotFound') throw error;
+            }
         }
     }
     return null;

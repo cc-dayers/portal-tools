@@ -74,6 +74,12 @@ Download `cc-portal-launcher-vscode.vsix` from a `vscode-v*` release on the
 [releases page](https://github.com/cc-dayers/portal-tools/releases), then run
 `code --install-extension cc-portal-launcher-vscode.vsix`.
 
+Open the `carecontinuity.app` repository, its `Portals` folder, or
+`Portals/Portals.code-workspace`. The extension finds the launcher host from
+either a repository root or a Portals root in a multi-root workspace.
+In WSL, install the extension in **WSL** (not only locally on Windows); the
+workspace extension runs the launcher and Node.js inside the WSL host.
+
 ### Updating
 
 Run **Portal Launcher: Check for Updates** from the Command Palette, or choose

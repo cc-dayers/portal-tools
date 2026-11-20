@@ -84,6 +84,8 @@ describe('Portal Launcher extension', () => {
     });
 
     it('launches a starter preset with every portal the host offers', async () => {
+        assert.equal(path.basename(vscode.workspace.workspaceFile.fsPath), 'Portals.code-workspace');
+        assert.ok(vscode.workspace.workspaceFolders.length > 1, 'expected a multi-root Portals workspace');
         await vscode.commands.executeCommand('ccPortalLauncher.preset.launch', { presetId: 'builtin-all-dev-api' });
         assert.equal(extension.exports.phase, 'running');
 
