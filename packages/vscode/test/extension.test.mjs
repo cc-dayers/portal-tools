@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { runInNewContext } from 'node:vm';
 
 const mocks = vi.hoisted(() => ({
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
     taskEnd: null,
     workspaceFolders: [],
     stat: vi.fn(),
+    readFile: vi.fn(),
 }));
 
 vi.mock('vscode', () => ({
@@ -35,12 +37,13 @@ vi.mock('vscode', () => ({
     TaskPanelKind: { Dedicated: 2 },
     Task: class { constructor(definition, scope, name, source, execution) { Object.assign(this, { definition, scope, name, source, execution }); } },
     ProcessExecution: class { constructor(command, args, options) { Object.assign(this, { command, args, options }); } },
+    ShellExecution: class { constructor(command, args, options) { Object.assign(this, { command, args, options }); } },
     tasks: {
         executeTask: mocks.executeTask,
         onDidEndTaskProcess: (handler) => { mocks.taskProcessEnd = handler; return { dispose() {} }; },
         onDidEndTask: (handler) => { mocks.taskEnd = handler; return { dispose() {} }; },
     },
-    Uri: { joinPath: (base, ...parts) => ({ ...base, fsPath: `${base.fsPath}/${parts.join('/')}` }) },
+    Uri: { joinPath: (base, ...parts) => ({ ...base, fsPath: path.posix.join(base.fsPath, ...parts) }) },
     commands: {
         executeCommand: mocks.executeCommand,
         registerCommand: (name, handler) => {
@@ -50,7 +53,7 @@ vi.mock('vscode', () => ({
     },
     workspace: {
         get workspaceFolders() { return mocks.workspaceFolders; },
-        fs: { stat: mocks.stat },
+        fs: { stat: mocks.stat, readFile: mocks.readFile },
         getConfiguration: () => ({ get: (_key, fallback) => mocks.mode ?? fallback, update: mocks.update }),
         onDidChangeConfiguration: (handler) => {
             mocks.onConfiguration = handler;
@@ -102,6 +105,7 @@ describe('preset settings and actions', () => {
         mocks.mode = 'full';
         mocks.workspaceFolders = [{ uri: { fsPath: '/app' } }];
         mocks.stat.mockResolvedValue({});
+        mocks.readFile.mockResolvedValue(Buffer.from(JSON.stringify({ packageManager: 'yarn@4.18.1' })));
         mocks.input.mockResolvedValue('Daily updated');
         mocks.warning.mockResolvedValue('Delete');
         mocks.update.mockImplementation(async (_key, value) => {
@@ -246,6 +250,65 @@ describe('preset settings and actions', () => {
         await mocks.commands.get('ccPortalLauncher.launchSaved')();
         expect(mocks.connect).not.toHaveBeenCalled();
         expect(api.dashboard.error).toBe('Workspace access denied');
+        expect(api.phase).toBe('idle');
+    });
+
+    test.each([
+        ['Install Dependencies', 0, 2, 'running'],
+        ['Install Dependencies', 1, 1, 'idle'],
+        [undefined, undefined, 1, 'idle'],
+    ])('handles missing Yarn dependencies with choice %s and task exit %s', async (choice, exitCode, attempts, phase) => {
+        mocks.connect.mockRejectedValueOnce(new Error("Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'log-update' imported from /app/Portals/scripts/portal-launcher.mjs"));
+        mocks.warning.mockResolvedValueOnce(choice);
+        mocks.executeTask.mockImplementation(async (task) => {
+            expect(mocks.connect).toHaveBeenCalledTimes(1);
+            expect(client.request).not.toHaveBeenCalled();
+            expect(task.execution).toMatchObject({
+                command: 'corepack', args: ['yarn', 'install'], options: { cwd: '/app/Portals' },
+            });
+            mocks.taskProcessEnd({ execution: { task }, exitCode });
+            return { task };
+        });
+
+        await mocks.commands.get('ccPortalLauncher.preset.launch')({ presetId: 'builtin-all-dev-api' });
+        expect(mocks.readFile).toHaveBeenCalledWith({ fsPath: '/app/Portals/package.json' });
+        expect(mocks.warning).toHaveBeenCalledWith(expect.stringContaining('Yarn dependencies'), expect.objectContaining({ modal: true }), 'Install Dependencies');
+        expect(mocks.executeTask).toHaveBeenCalledTimes(choice ? 1 : 0);
+        expect(mocks.connect).toHaveBeenCalledTimes(attempts);
+        expect(api.phase).toBe(phase);
+        if (exitCode === 0) {
+            expect(client.request).toHaveBeenCalledExactlyOnceWith('command.launch', expect.objectContaining({ source: 'selection' }));
+        } else {
+            expect(client.request).not.toHaveBeenCalled();
+            expect(api.dashboard.error).toBe(exitCode === 1
+                ? 'Portal dependency installation did not complete. Check the Install Portal Dependencies terminal and try again.'
+                : null);
+        }
+    });
+
+    test('keeps missing launcher source errors separate from missing packages', async () => {
+        const error = "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/app/Portals/scripts/module.mjs'";
+        mocks.connect.mockRejectedValueOnce(new Error(error));
+        await mocks.commands.get('ccPortalLauncher.launchSaved')();
+        expect(mocks.warning).not.toHaveBeenCalled();
+        expect(mocks.executeTask).not.toHaveBeenCalled();
+        expect(api.dashboard.error).toBe(error);
+    });
+
+    test('opens the configuration wizard after installing missing dependencies', async () => {
+        mocks.connect.mockRejectedValueOnce(new Error("Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'log-update'"));
+        mocks.warning.mockResolvedValueOnce('Install Dependencies');
+        mocks.executeTask.mockImplementation(async (task) => {
+            expect(mocks.pickers).toHaveLength(0);
+            mocks.taskProcessEnd({ execution: { task }, exitCode: 0 });
+            return { task };
+        });
+        mocks.finish = 'save';
+
+        await mocks.commands.get('ccPortalLauncher.configure')();
+        expect(mocks.connect).toHaveBeenCalledTimes(2);
+        expect(mocks.pickers.some((picker) => picker.title.endsWith('Finish'))).toBe(true);
+        expect(client.request).not.toHaveBeenCalled();
         expect(api.phase).toBe('idle');
     });
 

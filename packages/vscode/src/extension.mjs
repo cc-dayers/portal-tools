@@ -30,15 +30,15 @@ const WEBVIEW_COMMANDS = new Set([
 
 let activeSession;
 
-export async function runSetupTask(terminal) {
+export async function runSetupTask(terminal, { name = 'Launcher prerequisite setup', useShell = false } = {}) {
     if (!terminal?.command || !Array.isArray(terminal.args) || !terminal.cwd) {
         throw new Error('The launcher did not provide a setup terminal command.');
     }
     const definition = { type: 'ccPortalLauncherSetup', setupId: crypto.randomUUID() };
+    const Execution = useShell ? vscode.ShellExecution : vscode.ProcessExecution;
     const task = new vscode.Task(
-        definition, vscode.TaskScope.Workspace, 'Launcher prerequisite setup', 'Portal Launcher',
-        new vscode.ProcessExecution(terminal.command, terminal.args, { cwd: terminal.cwd }),
-        [],
+        definition, vscode.TaskScope.Workspace, name, 'Portal Launcher',
+        new Execution(terminal.command, terminal.args, { cwd: terminal.cwd }), [],
     );
     task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, focus: true };
     let resolveCompleted;
@@ -142,13 +142,40 @@ export async function activate(context) {
                 ? `\\\\.\\pipe\\cc-portals-${id}`
                 : path.join(os.tmpdir(), `cc-portals-${id}.sock`);
             const token = crypto.randomBytes(32).toString('hex');
-            client = await connectToLauncherHost({
+            const options = {
                 hostPath,
                 cwd: path.dirname(path.dirname(hostPath)),
                 runtimePath: 'node',
                 clientInfo: CLIENT_INFO,
                 persistentSession: { endpoint, token },
-            });
+            };
+            try {
+                client = await connectToLauncherHost(options);
+            } catch (error) {
+                if (hostPath !== hostUri.fsPath || !isMissingLauncherPackage(error)) throw error;
+                const projectUri = vscode.Uri.joinPath(hostUri, '..', '..');
+                const manifest = await readYarnProject(projectUri);
+                if (!manifest) throw error;
+                output.error(error.message);
+                const requirement = manifest.engines?.node ? ` Use Node.js ${manifest.engines.node}.` : '';
+                const choice = await vscode.window.showWarningMessage(
+                    'The Portal Launcher needs its Yarn dependencies installed.',
+                    {
+                        modal: true,
+                        detail: `Run corepack yarn install in ${options.cwd}.${requirement}\n\nSee the Portals README for Corepack and private registry setup.`,
+                    },
+                    'Install Dependencies',
+                );
+                if (choice !== 'Install Dependencies') return null;
+                const installed = await runSetupTask(
+                    { command: 'corepack', args: ['yarn', 'install'], cwd: options.cwd },
+                    { name: 'Install Portal Dependencies', useShell: true },
+                );
+                if (!installed) {
+                    throw new Error('Portal dependency installation did not complete. Check the Install Portal Dependencies terminal and try again.');
+                }
+                client = await connectToLauncherHost(options);
+            }
             if (client.hello?.capabilities?.persistentSession) {
                 reference = { endpoint, sessionId: client.hello.sessionId, hostPath, name: state.sessionName };
                 try {
@@ -228,10 +255,15 @@ export async function activate(context) {
 
     async function launch({ source, selection, name, presetId = null }) {
         if (activeSession?.launched) throw new Error('A launcher session is already running.');
+        if (connecting || state.phase === 'connecting') throw new Error('The launcher is already connecting.');
         setPhase('connecting', { error: null, snapshot: null, sessionName: name });
         let session;
         try {
             session = await connect();
+            if (!session) {
+                setPhase('idle', { sessionName: '' });
+                return;
+            }
             if (session.launched) return;
             const resolved =
                 source === 'saved'
@@ -285,7 +317,9 @@ export async function activate(context) {
 
     async function configure(seed, presetName, editingId = null) {
         if (activeSession?.launched) throw new Error('Stop the current session before configuring another launch.');
+        if (connecting || state.phase === 'connecting') throw new Error('The launcher is already connecting.');
         const session = await connect();
+        if (!session) return;
         try {
             if (session.launched) throw new Error('The previous launcher session was reconnected. Stop it before configuring another launch.');
             const result = await collectSelection(
@@ -642,6 +676,23 @@ function resolveHostPath(context, hostUri) {
     const override = process.env.CC_PORTAL_LAUNCHER_HOST;
     if (override && context.extensionMode === vscode.ExtensionMode.Development) return path.resolve(override);
     return hostUri.fsPath;
+}
+
+function isMissingLauncherPackage(error) {
+    return /Error \[ERR_MODULE_NOT_FOUND\]: Cannot find package ['"]/.test(error?.message ?? '');
+}
+
+async function readYarnProject(projectUri) {
+    try {
+        const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(projectUri, 'package.json'));
+        const manifest = JSON.parse(Buffer.from(bytes).toString('utf8'));
+        return typeof manifest?.packageManager === 'string' && manifest.packageManager.startsWith('yarn@')
+            ? manifest
+            : null;
+    } catch (error) {
+        if (error?.code === 'FileNotFound') return null;
+        throw error;
+    }
 }
 
 async function findLauncherHost() {

@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
 const vscode = require('vscode');
 const path = require('node:path');
 
@@ -63,6 +65,22 @@ describe('Portal Launcher extension', () => {
         assert.equal(await runSetupTask({ ...terminal, args: ['-e', 'process.exit(1)'] }), false);
         assert.equal(extension.exports.phase, 'idle');
         assert.equal(extension.exports.snapshot, null);
+    });
+
+    it('runs a Yarn install in the chosen directory in an integrated terminal', async () => {
+        const { runSetupTask } = require(path.join(extension.extensionPath, extension.packageJSON.main));
+        const { packageManager } = require(path.join(extension.extensionPath, '../../package.json'));
+        const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'portal dependency setup-'));
+        try {
+            await fs.writeFile(path.join(cwd, 'package.json'), JSON.stringify({ packageManager }));
+            assert.equal(await runSetupTask(
+                { command: 'corepack', args: ['yarn', 'install'], cwd },
+                { name: 'Install Portal Dependencies', useShell: true },
+            ), true);
+            await fs.access(path.join(cwd, 'yarn.lock'));
+        } finally {
+            await fs.rm(cwd, { recursive: true, force: true });
+        }
     });
 
     it('launches the saved configuration, reaches ready, and returns to idle after Stop All', async () => {

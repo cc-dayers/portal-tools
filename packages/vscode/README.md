@@ -57,6 +57,14 @@ the original shutdown-on-deactivation behavior. The host and extension changes
 must both be installed for reload recovery; this does not recover sessions after
 a computer restart or a launcher-host crash.
 
+### First launch on a fresh checkout
+
+If the launcher is missing Yarn dependencies when you configure or launch
+portals, choose **Install Dependencies**. VS Code runs `corepack yarn install`
+from the application's `Portals` folder in an integrated terminal and resumes
+your action after the install succeeds. If setup fails, check the terminal and
+the application's Portals README for Node.js, Corepack, and registry setup.
+
 ### Shadow DB Setup
 
 With a launcher host advertising `setup.check`, missing Shadow DB prerequisites
